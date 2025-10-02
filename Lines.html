@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Snellen – 20/400 → 20/20</title>
+<style>
+  :root { --fg:#111; --bg:#fff; --mut:#777; }
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+
+  /* Barra superior fija */
+  header{
+    position:sticky; top:0; z-index:5;
+    display:flex; flex-wrap:wrap; gap:10px; align-items:center;
+    padding:10px 12px; border-bottom:1px solid #e5e5e5; background:var(--bg)
+  }
+  header .grp{display:flex; flex-wrap:wrap; gap:6px; align-items:center}
+  header label{font-size:13px; opacity:.9}
+  header input[type="number"]{width:6.5rem; padding:6px}
+  header select{padding:6px}
+  .btn{padding:6px 10px; border:1px solid #999; background:#f7f7f7; border-radius:6px; cursor:pointer}
+  .btn:active{transform:translateY(1px)}
+  .small{font-size:12px; color:var(--mut)}
+
+  /* Estructura principal: centro (carta) + pie (calibración) */
+  main{
+    min-height: calc(100vh - 64px);
+    display:flex; flex-direction:column;
+  }
+
+  /* Contenedor que centra las letras en el área disponible */
+  .chartWrapper{
+    flex:1;                     /* ocupa todo el espacio libre */
+    display:flex;
+    align-items:center;         /* centra verticalmente la carta */
+    justify-content:center;     /* centra horizontalmente la carta */
+    padding: 18px 10px;
+  }
+
+  /* Carta: grid centrado */
+  #chart{
+    width: 100%; max-width: 1200px;
+    display:grid; gap:18px;
+    align-content:start;        /* distribución interna del grid */
+    justify-items:center;       /* cada fila centrada */
+  }
+  .rowWrap{display:flex; flex-direction:column; align-items:center}
+  .row{display:flex; gap:1ch; justify-content:center; align-items:flex-end; line-height:1}
+  .cell{display:inline-block; font-weight:700; user-select:none; -webkit-user-select:none}
+  .tumble{display:inline-block; transform-origin:50% 50%}
+  .label{font-size:12px; text-align:center; margin-top:4px; color:var(--mut)}
+
+  /* Calibración al pie (una sola) */
+  .calSection{padding: 8px 10px 16px; display:flex; flex-direction:column; align-items:center}
+  .barWrap{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:6px}
+  .bar{height:12px; background:#ccc; border:1px solid #999; box-shadow:inset 0 0 0 2px #eee}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="grp">
+    <label>Distancia (m):
+      <input id="distanceM" type="number" min="0.5" max="10" step="0.1" value="3.0">
+    </label>
+  </div>
+
+  <div class="grp">
+    <label>Signos:
+      <select id="alphabet" title="Sloan o E giratoria">
+        <option value="sloan">Sloan (CDHKNORSVZ)</option>
+        <option value="tumbleE">E giratoria (Tumbling-E)</option>
+      </select>
+    </label>
+  </div>
+
+  <div class="grp">
+    <label>Vista:
+      <select id="viewMode" title="Mostrar todas o una fila">
+        <option value="all" selected>Todas las filas</option>
+        <option value="one">Una fila</option>
+      </select>
+    </label>
+    <button id="prevRow" class="btn" title="Fila anterior (↑)">⟵ Anterior</button>
+    <button id="nextRow" class="btn" title="Fila siguiente (↓)">Siguiente ⟶</button>
+    <span id="rowInfo" class="small"></span>
+  </div>
+
+  <div class="grp">
+    <button id="shuffle" class="btn" title="Nuevas letras (←/→)">↻ Nuevas letras</button>
+  </div>
+</header>
+
+<main>
+  <!-- Zona central: letras SIEMPRE centradas -->
+  <div class="chartWrapper">
+    <section id="chart" aria-label="Carta Snellen"></section>
+  </div>
+
+  <!-- Calibración abajo -->
+  <section class="calSection" aria-label="Calibración">
+    <h3 class="small" style="margin:0 0 6px">Calibración (obligatoria la primera vez)</h3>
+    <div class="barWrap">
+      <div id="calBar" class="bar" style="width:200px"></div>
+      <input id="barRange" type="range" min="50" max="600" step="1" value="200">
+      <div>
+        <div class="small">Ajusta la barra para que mida <b>50 mm</b>.</div>
+        <div class="small">Ancho actual: <span id="barPx">200</span> px → <span id="pxPerMM">4.00</span> px/mm</div>
+      </div>
+      <button id="lockCal" class="btn">✔ Guardar</button>
+      <span id="calStatus" class="small"></span>
+    </div>
+  </section>
+</main>
+
+<script>
+/* ========= Utilidades ========= */
+const DEG = Math.PI/180;
+const SLOAN = ["C","D","H","K","N","O","R","S","V","Z"];
+const rand  = arr => arr[Math.floor(Math.random()*arr.length)];
+const randE = () => [0,90,180,270][Math.floor(Math.random()*4)];
+
+const store = {
+  get pxPerMM(){ return parseFloat(localStorage.getItem('pxPerMM')||"")||null; },
+  set pxPerMM(v){ localStorage.setItem('pxPerMM', String(v)); }
+};
+
+/* ========= DOM ========= */
+const distanceM = document.getElementById('distanceM');
+const alphabetSel = document.getElementById('alphabet');
+const viewMode = document.getElementById('viewMode');
+const prevRow = document.getElementById('prevRow');
+const nextRow = document.getElementById('nextRow');
+const rowInfo = document.getElementById('rowInfo');
+const chart = document.getElementById('chart');
+
+const bar = document.getElementById('calBar');
+const barRange = document.getElementById('barRange');
+const barPx = document.getElementById('barPx');
+const pxPerMMEl = document.getElementById('pxPerMM');
+const lockCal = document.getElementById('lockCal');
+const calStatus = document.getElementById('calStatus');
+
+/* ========= Barra de calibración ========= */
+function updateBarUI(px){
+  bar.style.width = px + "px";
+  barPx.textContent = px;
+  const ppm = (px/50);
+  pxPerMMEl.textContent = ppm.toFixed(2);
+}
+barRange.addEventListener('input', e => updateBarUI(parseInt(e.target.value,10)));
+updateBarUI(parseInt(barRange.value,10));
+
+lockCal.addEventListener('click', () => {
+  const ppm = parseFloat(pxPerMMEl.textContent);
+  store.pxPerMM = ppm;
+  calStatus.textContent = `Guardado (${ppm.toFixed(2)} px/mm)`;
+  render(false); // re-dibuja, no regenera letras
+});
+
+if(store.pxPerMM){
+  pxPerMMEl.textContent = store.pxPerMM.toFixed(2);
+  const px = Math.round(store.pxPerMM*50);
+  barRange.value = px;
+  updateBarUI(px);
+  calStatus.textContent = `Usando calibración guardada`;
+}
+
+/* ========= Secuencia Snellen ========= */
+const SNELLEN_SEQ = [400,200,100,70,50,40,30,25,20]; // 9 filas
+const snellenDenoms = n => SNELLEN_SEQ.slice(0, n);
+const logmarFromDen = den => Math.log10(den/20);
+
+// Patrón de letras por fila: 1,2,3,4,5 y luego 6
+function countsFor(n){
+  const out = [];
+  for(let i=0;i<n;i++){
+    if(i===0) out.push(1);
+    else if(i===1) out.push(2);
+    else if(i===2) out.push(3);
+    else if(i===3) out.push(4);
+    else if(i===4) out.push(5);
+    else out.push(6);
+  }
+  return out;
+}
+
+/* ========= Conversión de tamaño ========= */
+function letterHeightMM(distance_m, logMAR){
+  const Dmm = distance_m*1000;
+  const MAR = Math.pow(10, logMAR);    // min de arco
+  const angleDeg = 5*MAR/60;           // altura subtende 5*MAR
+  const angleRad = angleDeg*DEG;
+  return 2 * Dmm * Math.tan(angleRad/2);
+}
+function snellen20ftFromLogMAR(logMAR){
+  const denom = 20 / Math.pow(10, -logMAR);
+  return `20/${Math.round(denom)}`;
+}
+
+/* ========= Letras fijas ========= */
+let lettersCache = [];
+let rotCache = [];
+let cacheKey = '';
+let cacheMode = 'sloan';
+
+function generateLetters(counts, mode, logsKey){
+  cacheKey  = counts.join(',') + '|' + logsKey;
+  cacheMode = mode;
+  lettersCache = counts.map(cnt => Array.from({length: cnt}, _ => mode==='sloan' ? rand(SLOAN) : 'E'));
+  rotCache     = counts.map(cnt => Array.from({length: cnt}, _ => randE()));
+}
+
+/* ========= Render ========= */
+let currentRow = 0;
+const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
+
+function render(regenerate){
+  const ppm = store.pxPerMM;
+  chart.innerHTML = '';
+  if(!ppm){
+    const p = document.createElement('p');
+    p.textContent = '👉 Primero calibra la barra a 50 mm y pulsa "Guardar".';
+    chart.appendChild(p);
+    return;
+  }
+
+  const Dm = parseFloat(distanceM.value||'3') || 3.0;
+  const nRows = SNELLEN_SEQ.length; // 9 filas fijas en secuencia completa
+  const denoms = snellenDenoms(nRows);
+  const logs   = denoms.map(logmarFromDen);
+  const counts = countsFor(nRows);
+  const mode   = alphabetSel.value;
+
+  const logsKey = logs.map(x=>x.toFixed(4)).join(',');
+  if (regenerate || cacheKey !== counts.join(',')+'|'+logsKey || cacheMode !== mode) {
+    generateLetters(counts, mode, logsKey);
+  }
+
+  // Info y modo una fila
+  if(viewMode.value === 'one'){
+    currentRow = clamp(currentRow, 0, counts.length-1);
+    rowInfo.textContent = `Fila ${currentRow+1} / ${counts.length}`;
+  } else {
+    rowInfo.textContent = '';
+  }
+
+  counts.forEach((cnt, idx) => {
+    if(viewMode.value === 'one' && idx !== currentRow) return;
+
+    const logMAR = logs[idx];
+    const Hmm = letterHeightMM(Dm, logMAR);
+    const Hpx = Hmm * ppm;
+
+    const rowWrap = document.createElement('div');
+    rowWrap.className = 'rowWrap';
+
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.style.gap = Math.round(Hpx) + 'px'; // crowding ≈ 1× altura
+
+    for(let i=0;i<cnt;i++){
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      if(mode==='sloan'){
+        cell.textContent = lettersCache[idx][i];
+        cell.style.fontSize = `${Hpx}px`;
+      } else {
+        const e = document.createElement('span');
+        e.className = 'tumble';
+        e.textContent = 'E';
+        e.style.fontSize = `${Hpx}px`;
+        e.style.transform = `rotate(${rotCache[idx][i]}deg)`;
+        cell.appendChild(e);
+      }
+      row.appendChild(cell);
+    }
+
+    const lbl = document.createElement('div');
+    lbl.className = 'label';
+    lbl.textContent = `20/${denoms[idx]} • logMAR ${logMAR.toFixed(2)}`;
+
+    rowWrap.appendChild(row);
+    rowWrap.appendChild(lbl);
+    chart.appendChild(rowWrap);
+  });
+}
+
+/* ========= Eventos GUI ========= */
+distanceM.addEventListener('input', ()=>render(false));
+distanceM.addEventListener('change',()=>render(false));
+alphabetSel.addEventListener('change',()=>render(true));
+document.getElementById('shuffle').addEventListener('click', ()=>render(true));
+prevRow.addEventListener('click', ()=>{ currentRow = clamp(currentRow-1,0,999); render(false); });
+nextRow.addEventListener('click', ()=>{ currentRow = clamp(currentRow+1,0,999); render(false); });
+
+/* ========= Teclado ========= */
+document.addEventListener('keydown', (e) => {
+  // ← / → : nuevas letras (en cualquier vista)
+  if(e.key === "ArrowLeft" || e.key === "ArrowRight"){
+    render(true); e.preventDefault(); return;
+  }
+  // ↑ / ↓ : cambiar fila (solo en vista "Una fila")
+  if(viewMode.value === 'one'){
+    if(e.key === "ArrowUp"){
+      currentRow = clamp(currentRow-1, 0, 999);
+      render(false); e.preventDefault();
+    }
+    if(e.key === "ArrowDown"){
+      currentRow = clamp(currentRow+1, 0, 999);
+      render(false); e.preventDefault();
+    }
+  }
+});
+
+// primer render
+render(true);
+</script>
+</body>
+</html>
