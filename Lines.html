@@ -81,7 +81,7 @@
     </label>
     <button id="prevRow" class="btn" title="Fila anterior">⟵ Anterior</button>
     <button id="nextRow" class="btn" title="Fila siguiente">Siguiente ⟶</button>
-    <button id="shuffle" class="btn" title="Remezclar (B)">↻ Nuevas letras</button>
+    <button id="shuffle" class="btn" title="Remezclar (B / .)">↻ Nuevas letras</button>
     <span id="rowInfo" class="small"></span>
     <span class="small">Secuencia: 20/400,200,100,70,50,40,30,25,20 • Patrón: 1,2,3,4,5 y luego 6</span>
   </div>
@@ -185,6 +185,20 @@ const bar=$("#calBar"), barRange=$("#barRange"),
 
 const darkToggle=$("#darkToggle"), fullToggle=$("#fullToggle");
 
+/* ==================== Fullscreen helpers ==================== */
+async function tryLockEscape(){
+  // Bloquea ESC en fullscreen si el navegador lo soporta (Chrome/Edge).
+  // En Safari/iOS no está disponible y ESC seguirá saliendo.
+  if (navigator.keyboard && navigator.keyboard.lock) {
+    try { await navigator.keyboard.lock(['Escape']); } catch(e) {}
+  }
+}
+document.addEventListener('fullscreenchange',()=>{
+  const fs = !!document.fullscreenElement;
+  document.body.classList.toggle('fs', fs);
+  if (fs) tryLockEscape();
+});
+
 /* ==================== Calibración ==================== */
 function updateBarUI(px){
   bar.style.width=px+"px"; barPx.textContent=px;
@@ -202,7 +216,7 @@ if(store.pxPerMM){ pxPerMMEl.textContent=store.pxPerMM.toFixed(2);
 }
 
 /* ==================== Carta Snellen ==================== */
-const SNELLEN_SEQ=[400,200,100,70,50,40,30,25,20]; // 9 filas
+const SNELLEN_SEQ=[400,200,100,70,50,40,30,25,20];
 const snellenDenoms=n=>SNELLEN_SEQ.slice(0,n);
 const logmarFromDen=den=>Math.log10(den/20);
 function countsFor(n){
@@ -242,10 +256,10 @@ function render(regenerate){
     if(viewMode.value==='one'&&idx!==currentRow) return;
     const logMAR=logs[idx], Hmm=letterHeightMM(Dm,logMAR), Hpx=Hmm*ppm;
 
-    /* gap base y +30% si 20/50, 20/40, 20/30, 20/25, 20/20 */
+    /* gap base y +60% si 20/50, 20/40, 20/30, 20/25, 20/20 */
     const denom = denoms[idx];
     const baseGap = Math.round(Hpx);
-    const gapPx = Math.round(baseGap * (denom <= 50 ? 1.3 : 1));
+    const gapPx = Math.round(baseGap * (denom <= 50 ? 1.6 : 1)); // <- 60% extra
 
     const rowWrap=document.createElement('div'); rowWrap.className='rowWrap';
     const row=document.createElement('div'); row.className='row'; row.style.gap=gapPx+'px';
@@ -329,8 +343,10 @@ function switchMode(){
 modeSel.addEventListener('change',switchMode);
 
 darkToggle.addEventListener('click',()=>{ document.body.classList.toggle('dark'); switchMode(); });
-document.addEventListener('fullscreenchange',()=>{ document.body.classList.toggle('fs', !!document.fullscreenElement); });
-fullToggle.addEventListener('click',()=>{ if(!document.fullscreenElement){document.documentElement.requestFullscreen?.();} else {document.exitFullscreen?.();} });
+fullToggle.addEventListener('click',()=>{ 
+  if(!document.fullscreenElement){document.documentElement.requestFullscreen?.().then(tryLockEscape);} 
+  else {document.exitFullscreen?.();} 
+});
 
 /* ==================== Controles Snellen ==================== */
 distanceM.addEventListener('input',()=>render(false));
@@ -356,7 +372,7 @@ document.addEventListener('keydown',e=>{
 
   if(modeSel.value!=='snellen') return;
 
-  // ESC/ Escape -> cambiar tipo de letra
+  // ESC: cambiar alfabeto (si Keyboard Lock está activo en FS, no saldrá)
   if(e.key==='Escape'){
     cycleAlphabet();
     e.preventDefault();
