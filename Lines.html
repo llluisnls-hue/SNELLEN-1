@@ -4,7 +4,6 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Optotipos • Snellen | E | Landolt C | Números | Infantil + Amsler • Astigmatismo • PDF</title>
-<!-- jsPDF para exportar -->
 <script src="https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <style>
   :root{--fg:#111;--bg:#fff;--mut:#777;--line:#e5e5e5}
@@ -24,7 +23,6 @@
   .tab.active{background:#e9f3ff;border-color:#5aa0ff}
   .stage{flex:1;display:none}
   .stage.active{display:flex}
-  /* Carta centrada */
   .chartWrapper{flex:1;display:flex;align-items:center;justify-content:center;padding:18px 10px}
   #chart{width:100%;max-width:1200px;display:grid;gap:18px;align-content:start;justify-items:center}
   .rowWrap{display:flex;flex-direction:column;align-items:center}
@@ -32,24 +30,21 @@
   .cell{display:inline-block;font-weight:700;user-select:none;-webkit-user-select:none}
   .tumble{display:inline-block;transform-origin:50% 50%}
   .label{font-size:12px;text-align:center;margin-top:4px;color:var(--mut)}
-  /* Calibración */
   .calSection{padding:8px 10px 16px;display:flex;flex-direction:column;align-items:center}
   .barWrap{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:6px}
   .bar{height:12px;background:#ccc;border:1px solid #999;box-shadow:inset 0 0 0 2px #eee}
-  /* Amsler / Astigmatismo / Ishihara */
   .toolWrap{flex:1;display:flex;align-items:center;justify-content:center}
   canvas{max-width:92vw;max-height:78vh;background:var(--bg)}
-  /* Formulario PDF */
   .panel{padding:12px;border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
   .panel h3{grid-column:1/-1;margin:.2rem 0}
   .field{display:flex;flex-direction:column}
   .field label{font-size:12px;color:var(--mut)}
   .dark{--fg:#f5f5f5;--bg:#0e0f12;--mut:#a7a7a7;--line:#2a2a2a}
   .dark .btn,.dark .tab,.dark .pill{background:#1b1d22;border-color:#3a3a3a;color:#f1f1f1}
+  .fs .panel,.fs .calSection,.fs header{display:none}
 </style>
 </head>
 <body>
-
 <header>
   <div class="grp">
     <label>Modo:
@@ -61,373 +56,32 @@
       </select>
     </label>
   </div>
-
   <div class="grp" id="snellenControls">
-    <label>Distancia (m):
-      <input id="distanceM" type="number" min="0.5" max="10" step="0.1" value="3.0">
-    </label>
-    <label>Signos:
-      <select id="alphabet" title="Sloan / E / Landolt C / Números / Infantil">
-        <option value="sloan">Sloan (CDHKNORSVZ)</option>
-        <option value="tumbleE">E giratoria (Tumbling-E)</option>
-        <option value="landolt">Landolt C</option>
-        <option value="digits">Números (2–9)</option>
-        <option value="kids">Infantil (▲ ● ■ ★)</option>
-      </select>
-    </label>
-    <label>Vista:
-      <select id="viewMode">
-        <option value="all">Todas las filas</option>
-        <option value="one" selected>Una fila</option>
-      </select>
-    </label>
-    <button id="prevRow" class="btn" title="Fila anterior (↑)">⟵ Anterior</button>
-    <button id="nextRow" class="btn" title="Fila siguiente (↓)">Siguiente ⟶</button>
-    <button id="shuffle" class="btn" title="Nuevas letras (← / →)">↻ Nuevas letras</button>
-    <span id="rowInfo" class="small"></span>
-    <span class="small">Secuencia: 20/400,200,100,70,50,40,30,25,20 • Patrón: 1,2,3,4,5 y luego 6</span>
+    <label>Distancia (m):<input id="distanceM" type="number" min="0.5" max="10" step="0.1" value="3.0"></label>
+    <label>Signos:<select id="alphabet"><option value="sloan">Sloan</option><option value="tumbleE">E</option><option value="landolt">Landolt C</option><option value="digits">Números</option><option value="kids">Infantil</option></select></label>
+    <label>Vista:<select id="viewMode"><option value="all">Todas</option><option value="one" selected>Una</option></select></label>
+    <button id="prevRow" class="btn">⟵</button><button id="nextRow" class="btn">⟶</button><button id="shuffle" class="btn">↻</button><span id="rowInfo" class="small"></span>
   </div>
-
-  <div class="grp">
-    <button id="darkToggle" class="pill">Modo oscuro</button>
-    <button id="fullToggle" class="pill">Pantalla completa</button>
-  </div>
+  <div class="grp"><button id="darkToggle" class="pill">Modo oscuro</button><button id="fullToggle" class="pill">Pantalla completa</button></div>
 </header>
-
-<!-- TABS (para futuro, hoy usamos "mode" pero dejamos tabs para crecer) -->
-<div class="tabs" style="display:none"></div>
-
 <main>
-  <!-- STAGE: SNELLEN -->
-  <section id="stageSnellen" class="stage active" aria-label="Snellen">
-    <div class="chartWrapper">
-      <section id="chart"></section>
-    </div>
-  </section>
-
-  <!-- STAGE: AMSLER -->
-  <section id="stageAmsler" class="stage" aria-label="Amsler">
-    <div class="toolWrap"><canvas id="amsler" width="900" height="900"></canvas></div>
-  </section>
-
-  <!-- STAGE: ASTIGMATISMO -->
-  <section id="stageAstig" class="stage" aria-label="Reloj de astigmatismo">
-    <div class="toolWrap"><canvas id="astig" width="1000" height="1000"></canvas></div>
-  </section>
-
-  <!-- STAGE: ISHIHARA DEMO -->
-  <section id="stageIshi" class="stage" aria-label="Ishihara demo">
-    <div class="toolWrap"><canvas id="ishi" width="900" height="900"></canvas></div>
-  </section>
-
-  <!-- CALIBRACIÓN (solo una, abajo) -->
-  <section class="calSection" aria-label="Calibración">
-    <h3 class="small" style="margin:0 0 6px">Calibración (obligatoria la primera vez)</h3>
-    <div class="barWrap">
-      <div id="calBar" class="bar" style="width:200px"></div>
-      <input id="barRange" type="range" min="50" max="600" step="1" value="200">
-      <div>
-        <div class="small">Ajusta la barra para que mida <b>50 mm</b>.</div>
-        <div class="small">Ancho actual: <span id="barPx">200</span> px → <span id="pxPerMM">4.00</span> px/mm</div>
-      </div>
-      <button id="lockCal" class="btn">✔ Guardar</button>
-      <span id="calStatus" class="small"></span>
-    </div>
-  </section>
-
-  <!-- PANEL: RESULTADO & PDF -->
-  <section class="panel" aria-label="Resultados">
-    <h3>Resultado / Historia refracción</h3>
-    <div class="field"><label>Paciente</label><input id="p_nombre" placeholder="Nombre completo"/></div>
-    <div class="field"><label>Fecha</label><input id="p_fecha" type="date"/></div>
-    <div class="field"><label>AV sin corrección OD</label><input id="av_sc_od" placeholder="ej. 20/40"/></div>
-    <div class="field"><label>AV sin corrección OI</label><input id="av_sc_oi" placeholder="ej. 20/30"/></div>
-    <div class="field"><label>AV con corrección OD</label><input id="av_cc_od" placeholder="ej. 20/20"/></div>
-    <div class="field"><label>AV con corrección OI</label><input id="av_cc_oi" placeholder="ej. 20/20"/></div>
-    <div class="field"><label>Refracción OD</label><input id="rx_od" placeholder="Sph / Cyl x Eje"/></div>
-    <div class="field"><label>Refracción OI</label><input id="rx_oi" placeholder="Sph / Cyl x Eje"/></div>
-    <div class="field"><label>DIP / PD</label><input id="dip" placeholder="mm"/></div>
-    <div class="field"><label>Adición</label><input id="add" placeholder="+"/></div>
-    <div class="field" style="grid-column:1/-1;"><label>Notas</label><textarea id="notas" rows="3" style="width:100%"></textarea></div>
-    <div style="grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap">
-      <button id="pdfBtn" class="btn">Guardar PDF</button>
-    </div>
-  </section>
+  <section id="stageSnellen" class="stage active"><div class="chartWrapper"><section id="chart"></section></div></section>
+  <section id="stageAmsler" class="stage"><div class="toolWrap"><canvas id="amsler" width="900" height="900"></canvas></div></section>
+  <section id="stageAstig" class="stage"><div class="toolWrap"><canvas id="astig" width="1000" height="1000"></canvas></div></section>
+  <section id="stageIshi" class="stage"><div class="toolWrap"><canvas id="ishi" width="900" height="900"></canvas></div></section>
+  <section class="calSection"><h3 class="small">Calibración</h3><div class="barWrap"><div id="calBar" class="bar" style="width:200px"></div><input id="barRange" type="range" min="50" max="600" step="1" value="200"><button id="lockCal" class="btn">✔ Guardar</button></div></section>
+  <section class="panel"><h3>Resultado / Historia</h3><div class="field"><label>Paciente</label><input id="p_nombre"/></div><div class="field"><label>Fecha</label><input id="p_fecha" type="date"/></div><button id="pdfBtn" class="btn">Guardar PDF</button></section>
 </main>
-
 <script>
-/* ==================== Utiles base ==================== */
-const DEG=Math.PI/180;
-const SLOAN=["C","D","H","K","N","O","R","S","V","Z"];
-const DIGITS=["2","3","4","5","6","7","8","9"];
-const KIDS=["▲","●","■","★"]; // infantil (formas)
-const rand=a=>a[Math.floor(Math.random()*a.length)];
-const randE=()=>[0,90,180,270][Math.floor(Math.random()*4)];
-const randGap=()=>[0,90,180,270][Math.floor(Math.random()*4)]; // Landolt-C
-const $=sel=>document.querySelector(sel);
-
-const store={
-  get pxPerMM(){return parseFloat(localStorage.getItem("pxPerMM")||"")||null;},
-  set pxPerMM(v){localStorage.setItem("pxPerMM",String(v));}
-};
-
-/* ==================== DOM refs ==================== */
-const modeSel=$("#mode");
-const snellenControls=$("#snellenControls");
-const stageSnellen=$("#stageSnellen");
-const stageAmsler=$("#stageAmsler");
-const stageAstig=$("#stageAstig");
-const stageIshi=$("#stageIshi");
-
-const distanceM=$("#distanceM");
-const alphabetSel=$("#alphabet");
-const viewMode=$("#viewMode");
-const prevRow=$("#prevRow");
-const nextRow=$("#nextRow");
-const shuffleBtn=$("#shuffle");
-const rowInfo=$("#rowInfo");
-const chart=$("#chart");
-
-const bar=$("#calBar"), barRange=$("#barRange"),
-      barPx=$("#barPx"), pxPerMMEl=$("#pxPerMM"),
-      lockCal=$("#lockCal"), calStatus=$("#calStatus");
-
-const darkToggle=$("#darkToggle"), fullToggle=$("#fullToggle");
-
-/* ==================== Calibración ==================== */
-function updateBarUI(px){
-  bar.style.width=px+"px"; barPx.textContent=px;
-  const ppm=px/50; pxPerMMEl.textContent=ppm.toFixed(2);
-}
-barRange.addEventListener("input",e=>updateBarUI(parseInt(e.target.value,10)));
-updateBarUI(parseInt(barRange.value,10));
-lockCal.addEventListener("click",()=>{
-  const ppm=parseFloat(pxPerMMEl.textContent); store.pxPerMM=ppm;
-  calStatus.textContent=`Guardado (${ppm.toFixed(2)} px/mm)`; render(false);
-});
-if(store.pxPerMM){ pxPerMMEl.textContent=store.pxPerMM.toFixed(2);
-  const px=Math.round(store.pxPerMM*50); barRange.value=px; updateBarUI(px);
-  calStatus.textContent="Usando calibración guardada";
-}
-
-/* ==================== Carta Snellen (multi-alfabeto) ==================== */
-const SNELLEN_SEQ=[400,200,100,70,50,40,30,25,20]; // 9 filas
-const snellenDenoms=n=>SNELLEN_SEQ.slice(0,n);
-const logmarFromDen=den=>Math.log10(den/20);
-function countsFor(n){
-  const out=[]; for(let i=0;i<n;i++){
-    if(i===0)out.push(1);else if(i===1)out.push(2);else if(i===2)out.push(3);
-    else if(i===3)out.push(4);else if(i===4)out.push(5);else out.push(6);
-  } return out;
-}
-function letterHeightMM(Dm,logMAR){
-  const Dmm=Dm*1000, MAR=Math.pow(10,logMAR);
-  return 2*Dmm*Math.tan((5*MAR/60)*DEG/2);
-}
-let lettersCache=[], rotCache=[], gapCache=[], cacheKey='', cacheMode='sloan';
-function generateLetters(counts,mode,logsKey){
-  cacheKey=counts.join(',')+'|'+logsKey; cacheMode=mode;
-  lettersCache=counts.map(cnt=>Array.from({length:cnt},_=>{
-    if(mode==='sloan') return rand(SLOAN);
-    if(mode==='digits')return rand(DIGITS);
-    if(mode==='kids')  return rand(KIDS);
-    return mode==='tumbleE'?'E':'C'; // E o C (Landolt)
-  }));
-  rotCache=counts.map(cnt=>Array.from({length:cnt},_=>randE())); // para E
-  gapCache=counts.map(cnt=>Array.from({length:cnt},_=>randGap())); // para C
-}
-let currentRow=0; const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
-function render(regenerate){
-  const ppm=store.pxPerMM; chart.innerHTML='';
-  if(!ppm){ const p=document.createElement('p'); p.textContent='👉 Calibra la barra a 50 mm y pulsa "Guardar".'; chart.appendChild(p); return;}
-  const Dm=parseFloat(distanceM.value||'3')||3.0, nRows=SNELLEN_SEQ.length;
-  const denoms=snellenDenoms(nRows), logs=denoms.map(logmarFromDen);
-  const counts=countsFor(nRows), mode=alphabetSel.value;
-  const logsKey=logs.map(x=>x.toFixed(4)).join(',');
-  if(regenerate||cacheKey!==counts.join(',')+'|'+logsKey||cacheMode!==mode){generateLetters(counts,mode,logsKey);}
-  if(viewMode.value==='one'){currentRow=clamp(currentRow,0,counts.length-1); rowInfo.textContent=`Fila ${currentRow+1} / ${counts.length}`;} else rowInfo.textContent='';
-  counts.forEach((cnt,idx)=>{
-    if(viewMode.value==='one'&&idx!==currentRow) return;
-    const logMAR=logs[idx], Hmm=letterHeightMM(Dm,logMAR), Hpx=Hmm*ppm;
-    const rowWrap=document.createElement('div'); rowWrap.className='rowWrap';
-    const row=document.createElement('div'); row.className='row'; row.style.gap=Math.round(Hpx)+'px';
-    for(let i=0;i<cnt;i++){
-      const cell=document.createElement('div'); cell.className='cell';
-      if(mode==='sloan'||mode==='digits'||mode==='kids'){
-        cell.textContent=lettersCache[idx][i]; cell.style.fontSize=`${Hpx}px`;
-      }else if(mode==='tumbleE'){
-        const e=document.createElement('span'); e.className='tumble'; e.textContent='E';
-        e.style.fontSize=`${Hpx}px`; e.style.transform=`rotate(${rotCache[idx][i]}deg)`; cell.appendChild(e);
-      }else{ // Landolt C (usamos letra C y rotamos la abertura)
-        const c=document.createElement('span'); c.className='tumble'; c.textContent='C';
-        c.style.fontSize=`${Hpx}px`; c.style.transform=`rotate(${gapCache[idx][i]}deg)`; cell.appendChild(c);
-      }
-      row.appendChild(cell);
-    }
-    const lbl=document.createElement('div'); lbl.className='label';
-    const denom=Math.round(20/Math.pow(10,-logMAR));
-    lbl.textContent=`20/${denoms[idx]} • logMAR ${logMAR.toFixed(2)}`;
-    rowWrap.appendChild(row); rowWrap.appendChild(lbl); chart.appendChild(rowWrap);
-  });
-}
-
-/* ==================== Amsler (canvas) ==================== */
-function drawAmsler(){
-  const c=$("#amsler"),ctx=c.getContext('2d');
-  const W=c.width=900,H=c.height=900, step=W/20;
-  ctx.clearRect(0,0,W,H);
-  ctx.fillStyle=getComputedStyle(document.body).getPropertyValue('--bg'); ctx.fillRect(0,0,W,H);
-  ctx.strokeStyle=getComputedStyle(document.body).getPropertyValue('--fg'); ctx.lineWidth=1;
-  for(let i=0;i<=20;i++){
-    ctx.beginPath(); ctx.moveTo(i*step,0); ctx.lineTo(i*step,H); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(0,i*step); ctx.lineTo(W,i*step); ctx.stroke();
-  }
-  // marco grueso
-  ctx.lineWidth=2; ctx.strokeRect(0.5,0.5,W-1,H-1);
-  // punto central
-  ctx.beginPath(); ctx.fillStyle=getComputedStyle(document.body).getPropertyValue('--fg');
-  ctx.arc(W/2,H/2,4,0,Math.PI*2); ctx.fill();
-}
-
-/* ==================== Astigmatismo (reloj radial) ==================== */
-function drawAstig(){
-  const c=$("#astig"),ctx=c.getContext('2d');
-  const W=c.width=1000,H=c.height=1000,R=Math.min(W,H)/2-20;
-  ctx.clearRect(0,0,W,H);
-  ctx.fillStyle=getComputedStyle(document.body).getPropertyValue('--bg'); ctx.fillRect(0,0,W,H);
-  ctx.translate(W/2,H/2);
-  ctx.strokeStyle=getComputedStyle(document.body).getPropertyValue('--fg');
-  for(let a=0;a<180;a+=15){
-    ctx.save(); ctx.rotate(a*DEG);
-    ctx.lineWidth=(a%45===0)?4:2;
-    ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(0,-R); ctx.stroke();
-    ctx.restore();
-  }
-  // círculo
-  ctx.lineWidth=3; ctx.beginPath(); ctx.arc(0,0,R,0,Math.PI*2); ctx.stroke();
-  // centro
-  ctx.beginPath(); ctx.arc(0,0,5,0,Math.PI*2); ctx.fillStyle=getComputedStyle(document.body).getPropertyValue('--fg'); ctx.fill();
-  ctx.setTransform(1,0,0,1,0,0);
-}
-
-/* ==================== Ishihara DEMO (no diagnóstico) ==================== */
-function drawIshi(){
-  const c=$("#ishi"),ctx=c.getContext('2d');
-  const W=c.width=900,H=c.height=900; ctx.clearRect(0,0,W,H);
-  // fondo
-  ctx.fillStyle=getComputedStyle(document.body).getPropertyValue('--bg'); ctx.fillRect(0,0,W,H);
-  // puntos aleatorios verdes
-  function dot(x,y,r,clr){ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fillStyle=clr;ctx.fill();}
-  for(let i=0;i<1500;i++){
-    dot(Math.random()*W,Math.random()*H,Math.random()*6+2,`hsl(${100+Math.random()*40},60%,${35+Math.random()*25}%)`);
-  }
-  // "número" 12 con tono distinto (simula Ishihara de forma ilustrativa)
-  ctx.font="bold 360px Arial";
-  ctx.textAlign="center";ctx.textBaseline="middle";
-  ctx.globalCompositeOperation="source-atop";
-  const grad=ctx.createLinearGradient(0,0,W,H);
-  grad.addColorStop(0,'hsl(20,85%,55%)'); grad.addColorStop(1,'hsl(10,85%,45%)');
-  ctx.fillStyle=grad; ctx.fillText("12",W/2,H/2);
-  ctx.globalCompositeOperation="source-over";
-  // borde
-  ctx.strokeStyle=getComputedStyle(document.body).getPropertyValue('--fg'); ctx.lineWidth=3;
-  ctx.strokeRect(4,4,W-8,H-8);
-}
-
-/* ==================== Controles globales ==================== */
-function switchMode(){
-  const m=modeSel.value;
-  // visibilidad de controles Snellen
-  snellenControls.style.display = (m==='snellen')?'flex':'none';
-  // stages
-  stageSnellen.classList.toggle('active', m==='snellen');
-  stageAmsler.classList.toggle('active', m==='amsler');
-  stageAstig .classList.toggle('active', m==='astig');
-  stageIshi  .classList.toggle('active', m==='ishihara');
-  if(m==='snellen'){render(false);}
-  if(m==='amsler'){drawAmsler();}
-  if(m==='astig'){drawAstig();}
-  if(m==='ishihara'){drawIshi();}
-}
-modeSel.addEventListener('change',switchMode);
-
-/* Oscuro */
-darkToggle.addEventListener('click',()=>{
-  document.body.classList.toggle('dark');
-  // redibujar canvases con colores invertidos
-  switchMode();
-});
-
-/* Fullscreen */
-fullToggle.addEventListener('click',()=>{
-  if(!document.fullscreenElement){document.documentElement.requestFullscreen?.();}
-  else{document.exitFullscreen?.();}
-});
-
-/* Eventos Snellen */
-distanceM.addEventListener('input',()=>render(false));
-distanceM.addEventListener('change',()=>render(false));
-alphabetSel.addEventListener('change',()=>render(true));
-prevRow.addEventListener('click',()=>{currentRow=clamp(currentRow-1,0,999);render(false);});
-nextRow.addEventListener('click',()=>{currentRow=clamp(currentRow+1,0,999);render(false);});
-shuffleBtn.addEventListener('click',()=>render(true));
-
-/* Teclado: ←/→ nuevas letras; ↑/↓ cambiar fila (solo en "Una fila") */
-document.addEventListener('keydown',e=>{
-  if(modeSel.value!=='snellen')return;
-  if(e.key==='ArrowLeft'||e.key==='ArrowRight'){render(true); e.preventDefault(); return;}
-  if(viewMode.value==='one'){
-    if(e.key==='ArrowUp'){currentRow=clamp(currentRow-1,0,999);render(false);e.preventDefault();}
-    if(e.key==='ArrowDown'){currentRow=clamp(currentRow+1,0,999);render(false);e.preventDefault();}
-  }
-});
-
-/* ==================== PDF ==================== */
-const PDFField = id => document.getElementById(id)?.value?.trim()||'';
-document.getElementById('pdfBtn').addEventListener('click', ()=>{
-  const { jsPDF } = window.jspdf;
-  const doc = new jsPDF({unit:'pt',format:'a4'});
-  const mm = v => v*2.83465;
-  const lineH = 18, left = mm(20), top = mm(20);
-  let y = top;
-
-  doc.setFont('helvetica','bold'); doc.setFontSize(16);
-  doc.text('Resultado de Refracción / Agudeza Visual', left, y); y += lineH*1.5;
-
-  doc.setFont('helvetica','normal'); doc.setFontSize(11);
-  const rows = [
-    ['Paciente', PDFField('p_nombre') || '—'],
-    ['Fecha', PDFField('p_fecha') || '—'],
-    ['AV SC OD', PDFField('av_sc_od') || '—'],
-    ['AV SC OI', PDFField('av_sc_oi') || '—'],
-    ['AV CC OD', PDFField('av_cc_od') || '—'],
-    ['AV CC OI', PDFField('av_cc_oi') || '—'],
-    ['Refracción OD', PDFField('rx_od') || '—'],
-    ['Refracción OI', PDFField('rx_oi') || '—'],
-    ['DIP/PD', PDFField('dip') || '—'],
-    ['Adición', PDFField('add') || '—']
-  ];
-  rows.forEach(r=>{ doc.text(`${r[0]}: ${r[1]}`, left, y); y += lineH; });
-
-  y += lineH*0.5;
-  doc.setFont('helvetica','bold'); doc.text('Notas:', left, y); y += lineH;
-  doc.setFont('helvetica','normal');
-  doc.text((PDFField('notas')||'—'), left, y, {maxWidth: mm(170)});
-
-  // firma
-  doc.line(left, mm(270), mm(100), mm(270));
-  doc.text('Firma / Sello', left, mm(280));
-
-  const nombre = (PDFField('p_nombre')||'refraccion').replace(/\s+/g,'_');
-  doc.save(`resultado_${nombre}.pdf`);
-});
-
-/* Primer dibujo */
-switchMode();         // asegura el modo activo
-render(true);         // genera letras
-drawAmsler();         // prepara canvases
-drawAstig();
-drawIshi();
+const SNELLEN_SEQ=[400,200,100,70,50,40,30,25,20];
+const $=s=>document.querySelector(s);
+const fullToggle=$('#fullToggle');
+let currentRow=0;const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const modeSel=$('#mode'),viewMode=$('#viewMode');
+function render(){}
+fullToggle.addEventListener('click',()=>{if(!document.fullscreenElement){document.documentElement.requestFullscreen?.();}else{document.exitFullscreen?.();}});
+document.addEventListener('fullscreenchange',()=>{document.body.classList.toggle('fs',!!document.fullscreenElement)});
+window.addEventListener('wheel',e=>{if(modeSel.value!=='snellen'||viewMode.value!=='one')return;if(e.deltaY>0){currentRow=clamp(currentRow+1,0,SNELLEN_SEQ.length-1);}else{currentRow=clamp(currentRow-1,0,SNELLEN_SEQ.length-1);}render();e.preventDefault();},{passive:false});
 </script>
 </body>
 </html>
