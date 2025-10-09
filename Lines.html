@@ -185,18 +185,13 @@ const bar=$("#calBar"), barRange=$("#barRange"),
 
 const darkToggle=$("#darkToggle"), fullToggle=$("#fullToggle");
 
-/* ==================== Fullscreen helpers ==================== */
-async function tryLockEscape(){
-  // Bloquea ESC en fullscreen si el navegador lo soporta (Chrome/Edge).
-  // En Safari/iOS no está disponible y ESC seguirá saliendo.
-  if (navigator.keyboard && navigator.keyboard.lock) {
-    try { await navigator.keyboard.lock(['Escape']); } catch(e) {}
-  }
-}
+/* ==================== Pantalla completa ==================== */
 document.addEventListener('fullscreenchange',()=>{
-  const fs = !!document.fullscreenElement;
-  document.body.classList.toggle('fs', fs);
-  if (fs) tryLockEscape();
+  document.body.classList.toggle('fs', !!document.fullscreenElement);
+});
+fullToggle.addEventListener('click',()=>{
+  if(!document.fullscreenElement){document.documentElement.requestFullscreen?.();}
+  else{document.exitFullscreen?.();}
 });
 
 /* ==================== Calibración ==================== */
@@ -256,10 +251,10 @@ function render(regenerate){
     if(viewMode.value==='one'&&idx!==currentRow) return;
     const logMAR=logs[idx], Hmm=letterHeightMM(Dm,logMAR), Hpx=Hmm*ppm;
 
-    /* gap base y +60% si 20/50, 20/40, 20/30, 20/25, 20/20 */
+    /* gap base y +30% si 20/50, 20/40, 20/30, 20/25, 20/20 */
     const denom = denoms[idx];
     const baseGap = Math.round(Hpx);
-    const gapPx = Math.round(baseGap * (denom <= 50 ? 1.6 : 1)); // <- 60% extra
+    const gapPx = Math.round(baseGap * (denom <= 50 ? 1.3 : 1)); // 30% extra
 
     const rowWrap=document.createElement('div'); rowWrap.className='rowWrap';
     const row=document.createElement('div'); row.className='row'; row.style.gap=gapPx+'px';
@@ -327,7 +322,7 @@ function drawIshi(){
   ctx.strokeStyle=getComputedStyle(document.body).getPropertyValue('--fg'); ctx.lineWidth=3; ctx.strokeRect(4,4,W-8,H-8);
 }
 
-/* ==================== Modo / Oscuro / Fullscreen ==================== */
+/* ==================== Modo / Oscuro ==================== */
 function switchMode(){
   const m=modeSel.value;
   snellenControls.style.display = (m==='snellen')?'flex':'none';
@@ -341,12 +336,7 @@ function switchMode(){
   if(m==='ishihara') drawIshi();
 }
 modeSel.addEventListener('change',switchMode);
-
 darkToggle.addEventListener('click',()=>{ document.body.classList.toggle('dark'); switchMode(); });
-fullToggle.addEventListener('click',()=>{ 
-  if(!document.fullscreenElement){document.documentElement.requestFullscreen?.().then(tryLockEscape);} 
-  else {document.exitFullscreen?.();} 
-});
 
 /* ==================== Controles Snellen ==================== */
 distanceM.addEventListener('input',()=>render(false));
@@ -364,18 +354,16 @@ function cycleAlphabet(){
   alphabetSel.value = CYCLE_ALPHABETS[next];
   render(true);
 }
-
 document.addEventListener('keydown',e=>{
-  // no interferir si se está escribiendo
+  // Evitar interferir si se está escribiendo
   const tag=(document.activeElement&&document.activeElement.tagName)||'';
   if(/INPUT|TEXTAREA|SELECT/.test(tag)) return;
-
   if(modeSel.value!=='snellen') return;
 
-  // ESC: cambiar alfabeto (si Keyboard Lock está activo en FS, no saldrá)
-  if(e.key==='Escape'){
-    cycleAlphabet();
+  // F5 -> cambiar alfabeto (y evitar recarga de la página)
+  if(e.key==='F5'){
     e.preventDefault();
+    cycleAlphabet();
     return;
   }
 
