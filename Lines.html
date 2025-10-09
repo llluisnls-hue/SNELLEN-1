@@ -21,7 +21,6 @@
   main{min-height:calc(100vh - 64px);display:flex;flex-direction:column}
   .tabs{display:flex;gap:8px;flex-wrap:wrap;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--bg)}
   .tab{padding:6px 10px;border:1px solid #999;border-radius:8px;background:#f7f7f7;cursor:pointer}
-  .tab.active{background:#e9f3ff;border-color:#5aa0ff}
   .stage{flex:1;display:none}
   .stage.active{display:flex}
   /* Carta centrada */
@@ -46,7 +45,7 @@
   .field label{font-size:12px;color:var(--mut)}
   .dark{--fg:#f5f5f5;--bg:#0e0f12;--mut:#a7a7a7;--line:#2a2a2a}
   .dark .btn,.dark .tab,.dark .pill{background:#1b1d22;border-color:#3a3a3a;color:#f1f1f1}
-  /* --- NUEVO: Ocultar header, calibración y panel inferior en pantalla completa --- */
+  /* --- Ocultar header, calibración y panel inferior en pantalla completa --- */
   .fs header, .fs .calSection, .fs .panel{display:none}
 </style>
 </head>
@@ -83,9 +82,9 @@
         <option value="one" selected>Una fila</option>
       </select>
     </label>
-    <button id="prevRow" class="btn" title="Fila anterior (↑)">⟵ Anterior</button>
-    <button id="nextRow" class="btn" title="Fila siguiente (↓)">Siguiente ⟶</button>
-    <button id="shuffle" class="btn" title="Nuevas letras (← / →)">↻ Nuevas letras</button>
+    <button id="prevRow" class="btn" title="Fila anterior">⟵ Anterior</button>
+    <button id="nextRow" class="btn" title="Fila siguiente">Siguiente ⟶</button>
+    <button id="shuffle" class="btn" title="Nuevas letras (B en el control)">↻ Nuevas letras</button>
     <span id="rowInfo" class="small"></span>
     <span class="small">Secuencia: 20/400,200,100,70,50,40,30,25,20 • Patrón: 1,2,3,4,5 y luego 6</span>
   </div>
@@ -96,33 +95,26 @@
   </div>
 </header>
 
-<!-- TABS (para futuro, hoy usamos "mode" pero dejamos tabs para crecer) -->
-<div class="tabs" style="display:none"></div>
-
 <main>
-  <!-- STAGE: SNELLEN -->
   <section id="stageSnellen" class="stage active" aria-label="Snellen">
     <div class="chartWrapper">
       <section id="chart"></section>
     </div>
   </section>
 
-  <!-- STAGE: AMSLER -->
   <section id="stageAmsler" class="stage" aria-label="Amsler">
     <div class="toolWrap"><canvas id="amsler" width="900" height="900"></canvas></div>
   </section>
 
-  <!-- STAGE: ASTIGMATISMO -->
   <section id="stageAstig" class="stage" aria-label="Reloj de astigmatismo">
     <div class="toolWrap"><canvas id="astig" width="1000" height="1000"></canvas></div>
   </section>
 
-  <!-- STAGE: ISHIHARA DEMO -->
   <section id="stageIshi" class="stage" aria-label="Ishihara demo">
     <div class="toolWrap"><canvas id="ishi" width="900" height="900"></canvas></div>
   </section>
 
-  <!-- CALIBRACIÓN (solo una, abajo) -->
+  <!-- CALIBRACIÓN -->
   <section class="calSection" aria-label="Calibración">
     <h3 class="small" style="margin:0 0 6px">Calibración (obligatoria la primera vez)</h3>
     <div class="barWrap">
@@ -212,7 +204,7 @@ if(store.pxPerMM){ pxPerMMEl.textContent=store.pxPerMM.toFixed(2);
   calStatus.textContent="Usando calibración guardada";
 }
 
-/* ==================== Carta Snellen (multi-alfabeto) ==================== */
+/* ==================== Carta Snellen ==================== */
 const SNELLEN_SEQ=[400,200,100,70,50,40,30,25,20]; // 9 filas
 const snellenDenoms=n=>SNELLEN_SEQ.slice(0,n);
 const logmarFromDen=den=>Math.log10(den/20);
@@ -233,10 +225,10 @@ function generateLetters(counts,mode,logsKey){
     if(mode==='sloan') return rand(SLOAN);
     if(mode==='digits')return rand(DIGITS);
     if(mode==='kids')  return rand(KIDS);
-    return mode==='tumbleE'?'E':'C'; // E o C (Landolt)
+    return mode==='tumbleE'?'E':'C';
   }));
-  rotCache=counts.map(cnt=>Array.from({length:cnt},_=>randE())); // para E
-  gapCache=counts.map(cnt=>Array.from({length:cnt},_=>randGap())); // para C
+  rotCache=counts.map(cnt=>Array.from({length:cnt},_=>randE()));
+  gapCache=counts.map(cnt=>Array.from({length:cnt},_=>randGap()));
 }
 let currentRow=0; const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 function render(regenerate){
@@ -260,7 +252,7 @@ function render(regenerate){
       }else if(mode==='tumbleE'){
         const e=document.createElement('span'); e.className='tumble'; e.textContent='E';
         e.style.fontSize=`${Hpx}px`; e.style.transform=`rotate(${rotCache[idx][i]}deg)`; cell.appendChild(e);
-      }else{ // Landolt C (usamos letra C y rotamos la abertura)
+      }else{
         const c=document.createElement('span'); c.className='tumble'; c.textContent='C';
         c.style.fontSize=`${Hpx}px`; c.style.transform=`rotate(${gapCache[idx][i]}deg)`; cell.appendChild(c);
       }
@@ -273,7 +265,7 @@ function render(regenerate){
   });
 }
 
-/* ==================== Amsler (canvas) ==================== */
+/* ==================== Amsler / Astig / Ishihara ==================== */
 function drawAmsler(){
   const c=$("#amsler"),ctx=c.getContext('2d');
   const W=c.width=900,H=c.height=900, step=W/20;
@@ -284,14 +276,10 @@ function drawAmsler(){
     ctx.beginPath(); ctx.moveTo(i*step,0); ctx.lineTo(i*step,H); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(0,i*step); ctx.lineTo(W,i*step); ctx.stroke();
   }
-  // marco grueso
   ctx.lineWidth=2; ctx.strokeRect(0.5,0.5,W-1,H-1);
-  // punto central
   ctx.beginPath(); ctx.fillStyle=getComputedStyle(document.body).getPropertyValue('--fg');
   ctx.arc(W/2,H/2,4,0,Math.PI*2); ctx.fill();
 }
-
-/* ==================== Astigmatismo (reloj radial) ==================== */
 function drawAstig(){
   const c=$("#astig"),ctx=c.getContext('2d');
   const W=c.width=1000,H=c.height=1000,R=Math.min(W,H)/2-20;
@@ -305,73 +293,43 @@ function drawAstig(){
     ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(0,-R); ctx.stroke();
     ctx.restore();
   }
-  // círculo
   ctx.lineWidth=3; ctx.beginPath(); ctx.arc(0,0,R,0,Math.PI*2); ctx.stroke();
-  // centro
   ctx.beginPath(); ctx.arc(0,0,5,0,Math.PI*2); ctx.fillStyle=getComputedStyle(document.body).getPropertyValue('--fg'); ctx.fill();
   ctx.setTransform(1,0,0,1,0,0);
 }
-
-/* ==================== Ishihara DEMO (no diagnóstico) ==================== */
 function drawIshi(){
   const c=$("#ishi"),ctx=c.getContext('2d');
   const W=c.width=900,H=c.height=900; ctx.clearRect(0,0,W,H);
-  // fondo
   ctx.fillStyle=getComputedStyle(document.body).getPropertyValue('--bg'); ctx.fillRect(0,0,W,H);
-  // puntos aleatorios verdes
   function dot(x,y,r,clr){ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fillStyle=clr;ctx.fill();}
-  for(let i=0;i<1500;i++){
-    dot(Math.random()*W,Math.random()*H,Math.random()*6+2,`hsl(${100+Math.random()*40},60%,${35+Math.random()*25}%)`);
-  }
-  // "número" 12 con tono distinto (simula Ishihara de forma ilustrativa)
-  ctx.font="bold 360px Arial";
-  ctx.textAlign="center";ctx.textBaseline="middle";
-  ctx.globalCompositeOperation="source-atop";
-  const grad=ctx.createLinearGradient(0,0,W,H);
-  grad.addColorStop(0,'hsl(20,85%,55%)'); grad.addColorStop(1,'hsl(10,85%,45%)');
-  ctx.fillStyle=grad; ctx.fillText("12",W/2,H/2);
-  ctx.globalCompositeOperation="source-over";
-  // borde
-  ctx.strokeStyle=getComputedStyle(document.body).getPropertyValue('--fg'); ctx.lineWidth=3;
-  ctx.strokeRect(4,4,W-8,H-8);
+  for(let i=0;i<1500;i++) dot(Math.random()*W,Math.random()*H,Math.random()*6+2,`hsl(${100+Math.random()*40},60%,${35+Math.random()*25}%)`);
+  ctx.font="bold 360px Arial"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.globalCompositeOperation="source-atop";
+  const grad=ctx.createLinearGradient(0,0,W,H); grad.addColorStop(0,'hsl(20,85%,55%)'); grad.addColorStop(1,'hsl(10,85%,45%)');
+  ctx.fillStyle=grad; ctx.fillText("12",W/2,H/2); ctx.globalCompositeOperation="source-over";
+  ctx.strokeStyle=getComputedStyle(document.body).getPropertyValue('--fg'); ctx.lineWidth=3; ctx.strokeRect(4,4,W-8,H-8);
 }
 
-/* ==================== Controles globales ==================== */
+/* ==================== Modo / Oscuro / Fullscreen ==================== */
 function switchMode(){
   const m=modeSel.value;
-  // visibilidad de controles Snellen
   snellenControls.style.display = (m==='snellen')?'flex':'none';
-  // stages
   stageSnellen.classList.toggle('active', m==='snellen');
   stageAmsler.classList.toggle('active', m==='amsler');
   stageAstig .classList.toggle('active', m==='astig');
   stageIshi  .classList.toggle('active', m==='ishihara');
-  if(m==='snellen'){render(false);}
-  if(m==='amsler'){drawAmsler();}
-  if(m==='astig'){drawAstig();}
-  if(m==='ishihara'){drawIshi();}
+  if(m==='snellen') render(false);
+  if(m==='amsler') drawAmsler();
+  if(m==='astig')  drawAstig();
+  if(m==='ishihara') drawIshi();
 }
 modeSel.addEventListener('change',switchMode);
 
-/* Oscuro */
-darkToggle.addEventListener('click',()=>{
-  document.body.classList.toggle('dark');
-  // redibujar canvases con colores invertidos
-  switchMode();
-});
+darkToggle.addEventListener('click',()=>{ document.body.classList.toggle('dark'); switchMode(); });
 
-/* --- NUEVO: gestión de clase .fs cuando hay pantalla completa --- */
-document.addEventListener('fullscreenchange',()=>{
-  document.body.classList.toggle('fs', !!document.fullscreenElement);
-});
+document.addEventListener('fullscreenchange',()=>{ document.body.classList.toggle('fs', !!document.fullscreenElement); });
+fullToggle.addEventListener('click',()=>{ if(!document.fullscreenElement){document.documentElement.requestFullscreen?.();} else {document.exitFullscreen?.();} });
 
-/* Fullscreen */
-fullToggle.addEventListener('click',()=>{
-  if(!document.fullscreenElement){document.documentElement.requestFullscreen?.();}
-  else{document.exitFullscreen?.();}
-});
-
-/* Eventos Snellen */
+/* ==================== Controles Snellen ==================== */
 distanceM.addEventListener('input',()=>render(false));
 distanceM.addEventListener('change',()=>render(false));
 alphabetSel.addEventListener('change',()=>render(true));
@@ -379,32 +337,79 @@ prevRow.addEventListener('click',()=>{currentRow=clamp(currentRow-1,0,SNELLEN_SE
 nextRow.addEventListener('click',()=>{currentRow=clamp(currentRow+1,0,SNELLEN_SEQ.length-1);render(false);});
 shuffleBtn.addEventListener('click',()=>render(true));
 
-/* Teclado: ←/→ nuevas letras; ↑/↓ cambiar fila (solo en "Una fila") */
+/* --- Teclado / Presenter: mapeos --- */
 document.addEventListener('keydown',e=>{
-  if(modeSel.value!=='snellen')return;
-  if(e.key==='ArrowLeft'||e.key==='ArrowRight'){render(true); e.preventDefault(); return;}
+  // Evitar interferir si se está escribiendo en un input/textarea/select:
+  const tag=(document.activeElement&&document.activeElement.tagName)||'';
+  if(/INPUT|TEXTAREA|SELECT/.test(tag)) return;
+
+  if(modeSel.value!=='snellen') return;
+
+  // Shuffle con botón de pantalla negra (envía B en la mayoría de presenters)
+  if(e.key==='b' || e.key==='B' || e.key==='.') { render(true); e.preventDefault(); return; }
+
   if(viewMode.value==='one'){
-    if(e.key==='ArrowUp'){currentRow=clamp(currentRow-1,0,SNELLEN_SEQ.length-1);render(false);e.preventDefault();}
-    if(e.key==='ArrowDown'){currentRow=clamp(currentRow+1,0,SNELLEN_SEQ.length-1);render(false);e.preventDefault();}
+    // Avanzar fila
+    if(e.key==='ArrowRight' || e.key==='PageDown' || e.key===' '){
+      currentRow = clamp(currentRow+1, 0, SNELLEN_SEQ.length-1);
+      render(false); e.preventDefault(); return;
+    }
+    // Retroceder fila
+    if(e.key==='ArrowLeft' || e.key==='PageUp' || e.key==='Backspace'){
+      currentRow = clamp(currentRow-1, 0, SNELLEN_SEQ.length-1);
+      render(false); e.preventDefault(); return;
+    }
+    // También dejamos ↑/↓ por si usas teclado
+    if(e.key==='ArrowUp'){
+      currentRow = clamp(currentRow-1, 0, SNELLEN_SEQ.length-1);
+      render(false); e.preventDefault(); return;
+    }
+    if(e.key==='ArrowDown'){
+      currentRow = clamp(currentRow+1, 0, SNELLEN_SEQ.length-1);
+      render(false); e.preventDefault(); return;
+    }
   }
 });
 
-/* --- NUEVO: Desplazamiento vertical para avanzar/retroceder filas --- */
-let lastWheel=0; const WHEEL_COOLDOWN=120; // ms para no saltar varias filas
+/* --- Scroll: avanzar/retroceder filas --- */
+let lastWheel=0; const WHEEL_COOLDOWN=120;
 function handleWheel(e){
-  if(modeSel.value!=='snellen' || viewMode.value!=='one') return; 
+  if(modeSel.value!=='snellen' || viewMode.value!=='one') return;
   const now=Date.now();
   if(now-lastWheel < WHEEL_COOLDOWN){ e.preventDefault(); return; }
-  if(e.deltaY>0){ // hacia abajo: avanzar
-    currentRow = clamp(currentRow+1, 0, SNELLEN_SEQ.length-1);
-  }else if(e.deltaY<0){ // hacia arriba: retroceder
-    currentRow = clamp(currentRow-1, 0, SNELLEN_SEQ.length-1);
-  }
-  render(false);
-  lastWheel=now; e.preventDefault();
+  if(e.deltaY>0){ currentRow = clamp(currentRow+1, 0, SNELLEN_SEQ.length-1); }
+  else if(e.deltaY<0){ currentRow = clamp(currentRow-1, 0, SNELLEN_SEQ.length-1); }
+  render(false); lastWheel=now; e.preventDefault();
 }
-// Listener no pasivo para poder prevenir el scroll nativo
 window.addEventListener('wheel', handleWheel, {passive:false});
+
+/* --- Gestos táctiles: swipe vertical --- */
+let tStartY=null, tLastTime=0;
+const TOUCH_THRESHOLD=28; // px
+const TOUCH_COOLDOWN=140; // ms
+function onTouchStart(e){
+  if(modeSel.value!=='snellen' || viewMode.value!=='one') return;
+  tStartY = e.touches[0].clientY;
+}
+function onTouchMove(e){
+  if(modeSel.value!=='snellen' || viewMode.value!=='one') return;
+  if(tStartY==null) return;
+  const now=Date.now();
+  const y=e.touches[0].clientY;
+  const dy=y - tStartY; // +down avanza, -up retrocede
+  if(Math.abs(dy) >= TOUCH_THRESHOLD && (now - tLastTime) >= TOUCH_COOLDOWN){
+    if(dy < 0){ currentRow = clamp(currentRow-1, 0, SNELLEN_SEQ.length-1); }
+    else     { currentRow = clamp(currentRow+1, 0, SNELLEN_SEQ.length-1); }
+    render(false);
+    tLastTime = now;
+    tStartY = y; // permitir swipes continuos
+  }
+  e.preventDefault();
+}
+function onTouchEnd(){ tStartY=null; }
+window.addEventListener('touchstart', onTouchStart, {passive:false});
+window.addEventListener('touchmove',  onTouchMove,  {passive:false});
+window.addEventListener('touchend',   onTouchEnd,   {passive:false});
 
 /* ==================== PDF ==================== */
 const PDFField = id => document.getElementById(id)?.value?.trim()||'';
@@ -438,7 +443,6 @@ document.getElementById('pdfBtn').addEventListener('click', ()=>{
   doc.setFont('helvetica','normal');
   doc.text((PDFField('notas')||'—'), left, y, {maxWidth: mm(170)});
 
-  // firma
   doc.line(left, mm(270), mm(100), mm(270));
   doc.text('Firma / Sello', left, mm(280));
 
@@ -447,11 +451,14 @@ document.getElementById('pdfBtn').addEventListener('click', ()=>{
 });
 
 /* Primer dibujo */
-switchMode();         // asegura el modo activo
-render(true);         // genera letras
-drawAmsler();         // prepara canvases
-drawAstig();
-drawIshi();
+function init(){
+  switchMode();
+  render(true);
+  drawAmsler();
+  drawAstig();
+  drawIshi();
+}
+init();
 </script>
 </body>
 </html>
