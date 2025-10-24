@@ -202,13 +202,14 @@ let rafId=null, pendingBarPx=null;
 const darkToggle=$("#darkToggle"), fullToggle=$("#fullToggle");
 
 /* ==================== Pantalla completa ==================== */
-document.addEventListener('fullscreenchange',()=>{
-  document.body.classList.toggle('fs', !!document.fullscreenElement);
-});
-fullToggle.addEventListener('click',()=>{
-  if(!document.fullscreenElement){document.documentElement.requestFullscreen?.();}
-  else{document.exitFullscreen?.();}
-});
+function onFSChange(){ document.body.classList.toggle('fs', !!(document.fullscreenElement||document.webkitFullscreenElement||document.mozFullScreenElement||document.msFullscreenElement)); }
+document.addEventListener('fullscreenchange', onFSChange);
+document.addEventListener('webkitfullscreenchange', onFSChange);
+document.addEventListener('mozfullscreenchange', onFSChange);
+document.addEventListener('MSFullscreenChange', onFSChange);
+function enterFS(){ const el=document.documentElement; (el.requestFullscreen||el.webkitRequestFullscreen||el.mozRequestFullScreen||el.msRequestFullscreen).call(el); }
+function exitFS(){ (document.exitFullscreen||document.webkitExitFullscreen||document.mozCancelFullScreen||document.msExitFullscreen).call(document); }
+fullToggle.addEventListener('click',()=>{ const active = !!(document.fullscreenElement||document.webkitFullscreenElement||document.mozFullScreenElement||document.msFullscreenElement); if(!active){ enterFS(); } else { exitFS(); } });
 
 /* ==================== Calibración ==================== */
 function updateBarUI(px){
@@ -328,6 +329,37 @@ function renderDuo(regenerate){
   const ppm=store.pxPerMM; const panel=$('#duoPanel'); const duoRow=$('#duoRow'); const duoLbl=$('#duoLbl');
   duoRow.innerHTML=''; duoLbl.textContent='';
   if(!ppm){ duoLbl.textContent='👉 Calibra la barra a 50 mm y pulsa "Guardar".'; return; }
+
+  const Dm=parseFloat(distanceM.value||'3')||3.0;
+  const denoms=snellenDenoms(SNELLEN_SEQ.length); const idx=clamp(currentRow,0,denoms.length-1);
+  const logMAR=logmarFromDen(denoms[idx]); const Hpx=letterHeightMM(Dm,logMAR)*ppm;
+
+  // Número de signos: 5 (constante en duocromo)
+  const mode=alphabetSel.value;
+  // Genera letras LOCALMENTE para no afectar Snellen
+  const localLetters = Array.from({length:5},()=>{
+    if(mode==='sloan') return rand(SLOAN);
+    if(mode==='digits')return rand(DIGITS);
+    if(mode==='kids')  return rand(KIDS);
+    return mode==='tumbleE'?'E':'C';
+  });
+
+  const baseGap=Math.round(Hpx), gapPx=Math.round(baseGap*1.15);
+  duoRow.style.gap=gapPx+'px';
+
+  for(let i=0;i<5;i++){
+    const cell=document.createElement('div'); cell.className='duoCell';
+    if(mode==='tumbleE'){
+      const e=document.createElement('span'); e.className='tumble'; e.textContent='E'; e.style.fontSize=`${Hpx}px`; e.style.transform=`rotate(${randE()}deg)`; cell.appendChild(e);
+    }else if(mode==='landolt'){
+      const c=document.createElement('span'); c.className='tumble'; c.textContent='C'; c.style.fontSize=`${Hpx}px`; c.style.transform=`rotate(${randGap()}deg)`; cell.appendChild(c);
+    }else{
+      cell.textContent=localLetters[i]; cell.style.fontSize=`${Hpx}px`;
+    }
+    duoRow.appendChild(cell);
+  }
+  duoLbl.textContent=`Duocromo • fila 20/${denoms[idx]} • logMAR ${logMAR.toFixed(2)}  —  (←/→ para cambiar, ↻ para remezclar)`;
+}
 
   const Dm=parseFloat(distanceM.value||'3')||3.0;
   const denoms=snellenDenoms(SNELLEN_SEQ.length); const idx=clamp(currentRow,0,denoms.length-1);
@@ -466,10 +498,8 @@ document.getElementById('pdfBtn').addEventListener('click', ()=>{
 
 /* Primer dibujo */
 function init(){
-  switchMode();
-  render(true);
-  drawAmsler();
-  renderDuo(true);
+  switchMode(); // renderiza el modo actual
+  drawAmsler(); // precalienta el canvas de Amsler
 }
 init();
 </script>
