@@ -21,7 +21,13 @@
   main{min-height:calc(100vh - 64px);display:flex;flex-direction:column}
   .stage{flex:1;display:none}
   .stage.active{display:flex}
-  .chartWrapper{flex:1;display:flex;align-items:center;justify-content:center;padding:18px 10px;position:relative}
+
+  /* Área del optotipo en su propia capa (evita repintados) */
+  .chartWrapper{
+    flex:1;display:flex;align-items:center;justify-content:center;padding:18px 10px;position:relative;
+    backface-visibility:hidden;transform:translateZ(0);will-change:transform;
+    contain: paint;        /* aísla el paint del chart */
+  }
 
   /* DUOCROMÁTICO: mitad rojo / mitad verde detrás de las letras */
   .snellen-duo .chartWrapper{
@@ -37,14 +43,21 @@
   .tumble{display:inline-block;transform-origin:50% 50%}
   .label{font-size:12px;text-align:center;margin-top:4px;color:var(--mut);background:rgba(255,255,255,.6);padding:2px 6px;border-radius:6px}
 
-  /* Calibración */
-  .calSection{padding:8px 10px 16px;display:flex;flex-direction:column;align-items:center}
-  .barWrap{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:6px}
-  .bar{height:12px;background:#ccc;border:1px solid #999;box-shadow:inset 0 0 0 2px #eee}
-
-  /* Anti-parpadeo: aislar la sección de calibración */
-  .calSection, .barWrap, #calBar{contain:layout paint}
-  .chartWrapper{backface-visibility:hidden;transform:translateZ(0);will-change:contents}
+  /* ================= Calibración SIN reflujo ================= */
+  .calSection{padding:8px 10px 16px;display:flex;flex-direction:column;align-items:center;contain:content}
+  .barWrap{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:6px;contain:content}
+  /* Barra: ancho externo fijo; la longitud visible se logra con scaleX (no cambia layout) */
+  .barOuter{
+    width:600px;height:14px;position:relative;border:1px solid #999;background:#eee;border-radius:6px;overflow:hidden;
+  }
+  .barInner{
+    position:absolute;inset:0;transform-origin:left center;background:
+      repeating-linear-gradient(90deg,#c5c5c5 0 8px,#e8e8e8 8px 16px);
+    box-shadow:inset 0 0 0 2px #f6f6f6;
+    transform:scaleX(0.3333); /* inicial, equivalente a 200/600 */
+    will-change:transform;
+  }
+  .barReadout{min-width:160px}
 
   /* Amsler / Astigmatismo / Ishihara */
   .toolWrap{flex:1;display:flex;align-items:center;justify-content:center}
@@ -137,10 +150,11 @@
   <section class="calSection" aria-label="Calibración">
     <h3 class="small" style="margin:0 0 6px">Calibración (obligatoria la primera vez)</h3>
     <div class="barWrap">
-      <div id="calBar" class="bar" style="width:200px"></div>
-      <input id="barRange" type="range" min="50" max="600" step="1" value="200">
-      <div>
-        <div class="small">Ajusta la barra para que mida <b>50 mm</b>.</div>
+      <!-- NUEVA BARRA: ancho fijo + escala (sin reflujo) -->
+      <div class="barOuter" aria-hidden="true"><div id="calBarInner" class="barInner"></div></div>
+      <input id="barRange" type="range" min="50" max="600" step="1" value="200" aria-label="Barra de 50 mm">
+      <div class="barReadout">
+        <div class="small">Ajusta para que mida <b>50 mm</b>.</div>
         <div class="small">Ancho actual: <span id="barPx">200</span> px → <span id="pxPerMM">4.00</span> px/mm</div>
       </div>
       <button id="lockCal" class="btn">✔ Guardar</button>
@@ -179,6 +193,7 @@ const randE=()=>[0,90,180,270][Math.floor(Math.random()*4)];
 const randGap=()=>[0,90,180,270][Math.floor(Math.random()*4)];
 const $=sel=>document.querySelector(sel);
 
+/* ======= Persistencia ======= */
 const store={
   get pxPerMM(){return parseFloat(localStorage.getItem("pxPerMM")||"")||null;},
   set pxPerMM(v){localStorage.setItem("pxPerMM",String(v));},
@@ -186,7 +201,7 @@ const store={
   set duo(v){localStorage.setItem("duo",v?"1":"0");}
 };
 
-/* ==================== DOM refs ==================== */
+/* ======= DOM ======= */
 const modeSel=$("#mode");
 const snellenControls=$("#snellenControls");
 const stageSnellen=$("#stageSnellen");
@@ -204,9 +219,10 @@ const rowInfo=$("#rowInfo");
 const chart=$("#chart");
 const duoToggle=$("#duoToggle");
 
-const bar=$("#calBar"), barRange=$("#barRange"),
+const barRange=$("#barRange"),
       barPx=$("#barPx"), pxPerMMEl=$("#pxPerMM"),
-      lockCal=$("#lockCal"), calStatus=$("#calStatus");
+      lockCal=$("#lockCal"), calStatus=$("#calStatus"),
+      calBarInner=$("#calBarInner");
 
 const darkToggle=$("#darkToggle"), fullToggle=$("#fullToggle");
 
@@ -219,25 +235,40 @@ fullToggle.addEventListener('click',()=>{
   else{document.exitFullscreen?.();}
 });
 
-/* ==================== Calibración (sin parpadeo) ==================== */
-function updateBarUI(px){
-  bar.style.width=px+"px"; barPx.textContent=px;
-  const ppm=px/50; pxPerMMEl.textContent=ppm.toFixed(2);
+/* ==================== Calibración (sin parpadeo, con scaleX) ==================== */
+const BAR_BASE = 600; // px, ancho fijo de la barra externa
+
+function setBarVisual(px){
+  // Escala de 0..1 (evita reflow)
+  const scale = Math.max(50, Math.min(600, px)) / BAR_BASE;
+  calBarInner.style.transform = `scaleX(${scale})`;
+  barPx.textContent = Math.round(px);
+  const ppm = px / 50; // 50 mm de referencia
+  pxPerMMEl.textContent = ppm.toFixed(2);
 }
-// Mover barra -> solo UI de la barra
-barRange.addEventListener("input",e=>updateBarUI(parseInt(e.target.value,10)));
-updateBarUI(parseInt(barRange.value,10));
-lockCal.addEventListener("click",()=>{
-  const ppm=parseFloat(pxPerMMEl.textContent);
-  store.pxPerMM=ppm;
-  calStatus.textContent=`Guardado (${ppm.toFixed(2)} px/mm)`;
-  render(false); // aplicar recién al guardar
+
+barRange.addEventListener("input", e=>{
+  const px = parseInt(e.target.value,10);
+  setBarVisual(px);  // SOLO UI, no toca el chart
 });
-if(store.pxPerMM){
-  pxPerMMEl.textContent=store.pxPerMM.toFixed(2);
-  const px=Math.round(store.pxPerMM*50); barRange.value=px; updateBarUI(px);
-  calStatus.textContent="Usando calibración guardada";
-}
+
+lockCal.addEventListener("click",()=>{
+  const ppm = parseFloat(pxPerMMEl.textContent);
+  if(!isFinite(ppm) || ppm<=0) return;
+  store.pxPerMM = ppm;
+  calStatus.textContent = `Guardado (${ppm.toFixed(2)} px/mm)`;
+  render(false); // aplica al chart recién aquí
+});
+
+/* Estado inicial de la barra */
+(function initBar(){
+  const pxInit = store.pxPerMM ? store.pxPerMM*50 : 200;
+  barRange.value = Math.round(pxInit);
+  setBarVisual(pxInit);
+  if(store.pxPerMM){
+    calStatus.textContent = "Usando calibración guardada";
+  }
+})();
 
 /* ==================== Carta Snellen ==================== */
 const SNELLEN_SEQ=[400,200,100,70,50,40,30,25,20];
@@ -267,7 +298,8 @@ function generateLetters(counts,mode,logsKey){
 }
 let currentRow=0; const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 
-const LETTER_GAP_FACTOR = 2; // ← DOBLE separación global
+/* Doble separación entre letras */
+const LETTER_GAP_FACTOR = 2;
 
 function render(regenerate){
   const ppm=store.pxPerMM; chart.innerHTML='';
@@ -310,7 +342,7 @@ function render(regenerate){
     rowWrap.appendChild(row); rowWrap.appendChild(lbl); chart.appendChild(rowWrap);
   });
 
-  applyDuoBackground(); // aplicar/quitar fondo duocromático según toggle
+  applyDuoBackground();
 }
 
 /* ==================== Amsler / Astig / Ishihara ==================== */
@@ -384,21 +416,18 @@ duoToggle.addEventListener('change',()=>{
   store.duo = duoToggle.checked;
   applyDuoBackground();
 });
-
-/* restaurar preferencia duo */
-(function(){
-  if(store.duo){ duoToggle.checked = true; }
-})();
+(function(){ if(store.duo){ duoToggle.checked = true; } })();
 
 /* ==================== Controles Snellen ==================== */
-distanceM.addEventListener('input',()=>render(false));
+/* Para evitar parpadeos mientras editas distancia, renderizo solo en 'change' */
 distanceM.addEventListener('change',()=>render(false));
 alphabetSel.addEventListener('change',()=>render(true));
+viewMode.addEventListener('change',()=>render(false));
 prevRow.addEventListener('click',()=>{currentRow=clamp(currentRow-1,0,SNELLEN_SEQ.length-1);render(false);});
 nextRow.addEventListener('click',()=>{currentRow=clamp(currentRow+1,0,SNELLEN_SEQ.length-1);render(false);});
 shuffleBtn.addEventListener('click',()=>render(true));
 
-/* --- Teclado / Presenter: mapeos --- */
+/* --- Teclado / Presenter --- */
 const CYCLE_ALPHABETS=["sloan","tumbleE","landolt","digits","kids"];
 function cycleAlphabet(){
   const idx = CYCLE_ALPHABETS.indexOf(alphabetSel.value);
@@ -407,33 +436,20 @@ function cycleAlphabet(){
   render(true);
 }
 document.addEventListener('keydown',e=>{
-  // Evitar interferir si se está escribiendo
   const tag=(document.activeElement&&document.activeElement.tagName)||'';
   if(/INPUT|TEXTAREA|SELECT/.test(tag)) return;
   if(modeSel.value!=='snellen') return;
 
-  // F5 -> cambiar alfabeto (y evitar recarga de la página)
-  if(e.key==='F5'){
-    e.preventDefault();
-    cycleAlphabet();
-    return;
-  }
-
-  // Remezclar (B o .)
-  if(e.key==='b' || e.key==='B' || e.key==='.') { render(true); e.preventDefault(); return; }
+  if(e.key==='F5'){ e.preventDefault(); cycleAlphabet(); return; }
+  if(e.key==='b' || e.key==='B' || e.key==='.'){ render(true); e.preventDefault(); return; }
 
   if(viewMode.value==='one'){
-    // Avanzar (→, PageDown, Space)
     if(e.key==='ArrowRight' || e.key==='PageDown' || e.key===' '){
-      currentRow = clamp(currentRow+1, 0, SNELLEN_SEQ.length-1);
-      render(false); e.preventDefault(); return;
+      currentRow = clamp(currentRow+1, 0, SNELLEN_SEQ.length-1); render(false); e.preventDefault(); return;
     }
-    // Retroceder (←, PageUp, Backspace)
     if(e.key==='ArrowLeft' || e.key==='PageUp' || e.key==='Backspace'){
-      currentRow = clamp(currentRow-1, 0, SNELLEN_SEQ.length-1);
-      render(false); e.preventDefault(); return;
+      currentRow = clamp(currentRow-1, 0, SNELLEN_SEQ.length-1); render(false); e.preventDefault(); return;
     }
-    // ↑/↓ opcionales
     if(e.key==='ArrowUp'){ currentRow = clamp(currentRow-1, 0, SNELLEN_SEQ.length-1); render(false); e.preventDefault(); return; }
     if(e.key==='ArrowDown'){ currentRow = clamp(currentRow+1, 0, SNELLEN_SEQ.length-1); render(false); e.preventDefault(); return; }
   }
@@ -478,14 +494,13 @@ document.getElementById('pdfBtn').addEventListener('click', ()=>{
   doc.save(`resultado_${nombre}.pdf`);
 });
 
-/* Inicializar */
+/* ==================== Inicializar ==================== */
 function init(){
   switchMode();
   render(true);
   drawAmsler();
   drawAstig();
   drawIshi();
-  // restaurar estado duocromático después de primer render
   applyDuoBackground();
 }
 init();
