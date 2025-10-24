@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Optotipos • Snellen | E | Landolt C | Números | Infantil + Amsler • Astigmatismo • PDF</title>
+<title>Optotipos • Snellen | E | Landolt C | Números | Infantil + Amsler • Duocromo • PDF</title>
 <!-- jsPDF para exportar -->
 <script src="https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <style>
@@ -30,11 +30,20 @@
   .label{font-size:12px;text-align:center;margin-top:4px;color:var(--mut)}
   /* Calibración */
   .calSection{padding:8px 10px 16px;display:flex;flex-direction:column;align-items:center}
-  .barWrap{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:6px}
-  .bar{height:12px;background:#ccc;border:1px solid #999;box-shadow:inset 0 0 0 2px #eee}
-  /* Amsler / Astigmatismo / Ishihara */
+  .barWrap{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:6px;contain:layout paint}
+  .bar{height:12px;background:#ccc;border:1px solid #999;box-shadow:inset 0 0 0 2px #eee;width:1px;transform-origin:left center;will-change:transform}
+  /* Amsler / Duocromo */
   .toolWrap{flex:1;display:flex;align-items:center;justify-content:center}
   canvas{max-width:92vw;max-height:78vh;background:var(--bg)}
+
+  /* Duocromo panel */
+  .duoPanel{width:min(1100px,92vw);height:min(70vh,620px);display:flex;align-items:center;justify-content:center;border:2px solid var(--line);
+    background:linear-gradient(90deg,#c62828 0 50%,#1b5e20 50% 100%);position:relative;border-radius:10px}
+  .duoPanel::after{content:"R";position:absolute;left:8px;top:8px;font-weight:700;color:#fff;opacity:.8}
+  .duoPanel::before{content:"G";position:absolute;right:8px;top:8px;font-weight:700;color:#fff;opacity:.8}
+  .duoRow{display:flex;align-items:flex-end;justify-content:center;gap:1ch;line-height:1;mix-blend-mode:normal}
+  .duoCell{font-weight:800;color:#000;text-shadow:0 0 0.9px #000}
+
   /* Formulario PDF */
   .panel{padding:12px;border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
   .panel h3{grid-column:1/-1;margin:.2rem 0}
@@ -42,8 +51,11 @@
   .field label{font-size:12px;color:var(--mut)}
   .dark{--fg:#f5f5f5;--bg:#0e0f12;--mut:#a7a7a7;--line:#2a2a2a}
   .dark .btn,.dark .tab,.dark .pill{background:#1b1d22;border-color:#3a3a3a;color:#f1f1f1}
+  .dark .duoCell{color:#f5f5f5;text-shadow:0 0 0.9px #f5f5f5}
   /* Ocultar header, calibración y panel inferior en pantalla completa */
   .fs header, .fs .calSection, .fs .panel{display:none}
+  /* Ocultar control de vista cuando no aplique */
+  .hide{display:none!important}
 </style>
 </head>
 <body>
@@ -54,8 +66,7 @@
       <select id="mode">
         <option value="snellen" selected>Snellen (filas)</option>
         <option value="amsler">Amsler</option>
-        <option value="astig">Reloj de astigmatismo</option>
-        <option value="ishihara">Ishihara (demo)</option>
+        <option value="duo">Duocromo (rojo/verde)</option>
       </select>
     </label>
   </div>
@@ -73,7 +84,7 @@
         <option value="kids">Infantil (▲ ● ■ ★)</option>
       </select>
     </label>
-    <label>Vista:
+    <label id="viewModeWrap">Vista:
       <select id="viewMode">
         <option value="all">Todas las filas</option>
         <option value="one" selected>Una fila</option>
@@ -83,7 +94,7 @@
     <button id="nextRow" class="btn" title="Fila siguiente">Siguiente ⟶</button>
     <button id="shuffle" class="btn" title="Remezclar (B / .)">↻ Nuevas letras</button>
     <span id="rowInfo" class="small"></span>
-    <span class="small">Secuencia: 20/400,200,100,70,50,40,30,25,20 • Patrón: 1,2,3,4,5 y luego 6</span>
+    <span class="small" id="seqInfo">Secuencia: 20/400,200,100,70,50,40,30,25,20 • Patrón: 1,2,3,4,5 y luego 6</span>
   </div>
 
   <div class="grp">
@@ -103,12 +114,15 @@
     <div class="toolWrap"><canvas id="amsler" width="900" height="900"></canvas></div>
   </section>
 
-  <section id="stageAstig" class="stage" aria-label="Reloj de astigmatismo">
-    <div class="toolWrap"><canvas id="astig" width="1000" height="1000"></canvas></div>
-  </section>
-
-  <section id="stageIshi" class="stage" aria-label="Ishihara demo">
-    <div class="toolWrap"><canvas id="ishi" width="900" height="900"></canvas></div>
+  <section id="stageDuo" class="stage" aria-label="Duocromo">
+    <div class="toolWrap">
+      <div id="duoPanel" class="duoPanel">
+        <div>
+          <div id="duoRow" class="duoRow"></div>
+          <div id="duoLbl" class="label" style="text-align:center;margin-top:8px"></div>
+        </div>
+      </div>
+    </div>
   </section>
 
   <!-- CALIBRACIÓN -->
@@ -167,21 +181,23 @@ const modeSel=$("#mode");
 const snellenControls=$("#snellenControls");
 const stageSnellen=$("#stageSnellen");
 const stageAmsler=$("#stageAmsler");
-const stageAstig=$("#stageAstig");
-const stageIshi=$("#stageIshi");
+const stageDuo=$("#stageDuo");
 
 const distanceM=$("#distanceM");
 const alphabetSel=$("#alphabet");
+const viewModeWrap=$("#viewModeWrap");
 const viewMode=$("#viewMode");
 const prevRow=$("#prevRow");
 const nextRow=$("#nextRow");
 const shuffleBtn=$("#shuffle");
 const rowInfo=$("#rowInfo");
+const seqInfo=$("#seqInfo");
 const chart=$("#chart");
 
 const bar=$("#calBar"), barRange=$("#barRange"),
       barPx=$("#barPx"), pxPerMMEl=$("#pxPerMM"),
       lockCal=$("#lockCal"), calStatus=$("#calStatus");
+let rafId=null, pendingBarPx=null;
 
 const darkToggle=$("#darkToggle"), fullToggle=$("#fullToggle");
 
@@ -196,14 +212,22 @@ fullToggle.addEventListener('click',()=>{
 
 /* ==================== Calibración ==================== */
 function updateBarUI(px){
-  bar.style.width=px+"px"; barPx.textContent=px;
-  const ppm=px/50; pxPerMMEl.textContent=ppm.toFixed(2);
+  // Batching en rAF para evitar recalcular layout global y parpadeos
+  pendingBarPx = px;
+  if (rafId) return;
+  rafId = requestAnimationFrame(()=>{
+    const v = pendingBarPx;
+    bar.style.transform = `scaleX(${v})`;
+    barPx.textContent = v;
+    const ppm = v/50; pxPerMMEl.textContent = ppm.toFixed(2);
+    rafId = null;
+  });
 }
 barRange.addEventListener("input",e=>updateBarUI(parseInt(e.target.value,10)));
 updateBarUI(parseInt(barRange.value,10));
 lockCal.addEventListener("click",()=>{
   const ppm=parseFloat(pxPerMMEl.textContent); store.pxPerMM=ppm;
-  calStatus.textContent=`Guardado (${ppm.toFixed(2)} px/mm)`; render(false);
+  calStatus.textContent=`Guardado (${ppm.toFixed(2)} px/mm)`; render(false); renderDuo(false);
 });
 if(store.pxPerMM){ pxPerMMEl.textContent=store.pxPerMM.toFixed(2);
   const px=Math.round(store.pxPerMM*50); barRange.value=px; updateBarUI(px);
@@ -244,7 +268,7 @@ function render(regenerate){
   const denoms=snellenDenoms(nRows), logs=denoms.map(logmarFromDen);
   const counts=countsFor(nRows), mode=alphabetSel.value;
   const logsKey=logs.map(x=>x.toFixed(4)).join(',');
-  if(regenerate||cacheKey!==counts.join(',')+'|'+logsKey||cacheMode!==mode){generateLetters(counts,mode,logsKey);}
+  if(regenerate||cacheKey!==counts.join(',')+'|'+logsKey||cacheMode!==mode){generateLetters(counts,mode,logsKey);}  
   if(viewMode.value==='one'){currentRow=clamp(currentRow,0,counts.length-1); rowInfo.textContent=`Fila ${currentRow+1} / ${counts.length}`;} else rowInfo.textContent='';
 
   counts.forEach((cnt,idx)=>{
@@ -278,7 +302,7 @@ function render(regenerate){
   });
 }
 
-/* ==================== Amsler / Astig / Ishihara ==================== */
+/* ==================== Amsler ==================== */
 function drawAmsler(){
   const c=$("#amsler"),ctx=c.getContext('2d');
   const W=c.width=900,H=c.height=900, step=W/20;
@@ -293,58 +317,70 @@ function drawAmsler(){
   ctx.beginPath(); ctx.fillStyle=getComputedStyle(document.body).getPropertyValue('--fg');
   ctx.arc(W/2,H/2,4,0,Math.PI*2); ctx.fill();
 }
-function drawAstig(){
-  const c=$("#astig"),ctx=c.getContext('2d');
-  const W=c.width=1000,H=c.height=1000,R=Math.min(W,H)/2-20;
-  ctx.clearRect(0,0,W,H);
-  ctx.fillStyle=getComputedStyle(document.body).getPropertyValue('--bg'); ctx.fillRect(0,0,W,H);
-  ctx.translate(W/2,H/2);
-  ctx.strokeStyle=getComputedStyle(document.body).getPropertyValue('--fg');
-  for(let a=0;a<180;a+=15){
-    ctx.save(); ctx.rotate(a*DEG);
-    ctx.lineWidth=(a%45===0)?4:2;
-    ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(0,-R); ctx.stroke();
-    ctx.restore();
+
+/* ==================== Duocromo (rojo/verde) ==================== */
+function renderDuo(regenerate){
+  const ppm=store.pxPerMM; const panel=$('#duoPanel'); const duoRow=$('#duoRow'); const duoLbl=$('#duoLbl');
+  duoRow.innerHTML=''; duoLbl.textContent='';
+  if(!ppm){ duoLbl.textContent='👉 Calibra la barra a 50 mm y pulsa "Guardar".'; return; }
+
+  const Dm=parseFloat(distanceM.value||'3')||3.0;
+  const denoms=snellenDenoms(SNELLEN_SEQ.length); const idx=clamp(currentRow,0,denoms.length-1);
+  const logMAR=logmarFromDen(denoms[idx]); const Hpx=letterHeightMM(Dm,logMAR)*ppm;
+
+  // Número de signos: 5 (constante en duocromo)
+  const mode=alphabetSel.value; if(regenerate){ generateLetters([5],mode,logMAR.toFixed(4)); }
+  const letters=(lettersCache[0]&&lettersCache[0].length===5)?lettersCache[0]:Array.from({length:5},()=>{
+    if(mode==='sloan') return rand(SLOAN); if(mode==='digits') return rand(DIGITS); if(mode==='kids') return rand(KIDS); return mode==='tumbleE'?'E':'C';
+  });
+
+  const baseGap=Math.round(Hpx), gapPx=Math.round(baseGap*1.15);
+  duoRow.style.gap=gapPx+'px';
+
+  for(let i=0;i<5;i++){
+    const cell=document.createElement('div'); cell.className='duoCell';
+    if(mode==='tumbleE'){
+      const e=document.createElement('span'); e.className='tumble'; e.textContent='E'; e.style.fontSize=`${Hpx}px`; e.style.transform=`rotate(${randE()}deg)`; cell.appendChild(e);
+    }else if(mode==='landolt'){
+      const c=document.createElement('span'); c.className='tumble'; c.textContent='C'; c.style.fontSize=`${Hpx}px`; c.style.transform=`rotate(${randGap()}deg)`; cell.appendChild(c);
+    }else{
+      cell.textContent=letters[i]; cell.style.fontSize=`${Hpx}px`;
+    }
+    duoRow.appendChild(cell);
   }
-  ctx.lineWidth=3; ctx.beginPath(); ctx.arc(0,0,R,0,Math.PI*2); ctx.stroke();
-  ctx.beginPath(); ctx.arc(0,0,5,0,Math.PI*2); ctx.fillStyle=getComputedStyle(document.body).getPropertyValue('--fg'); ctx.fill();
-  ctx.setTransform(1,0,0,1,0,0);
-}
-function drawIshi(){
-  const c=$("#ishi"),ctx=c.getContext('2d');
-  const W=c.width=900,H=c.height=900; ctx.clearRect(0,0,W,H);
-  ctx.fillStyle=getComputedStyle(document.body).getPropertyValue('--bg'); ctx.fillRect(0,0,W,H);
-  function dot(x,y,r,clr){ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fillStyle=clr;ctx.fill();}
-  for(let i=0;i<1500;i++) dot(Math.random()*W,Math.random()*H,Math.random()*6+2,`hsl(${100+Math.random()*40},60%,${35+Math.random()*25}%)`);
-  ctx.font="bold 360px Arial"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.globalCompositeOperation="source-atop";
-  const grad=ctx.createLinearGradient(0,0,W,H); grad.addColorStop(0,'hsl(20,85%,55%)'); grad.addColorStop(1,'hsl(10,85%,45%)');
-  ctx.fillStyle=grad; ctx.fillText("12",W/2,H/2); ctx.globalCompositeOperation="source-over";
-  ctx.strokeStyle=getComputedStyle(document.body).getPropertyValue('--fg'); ctx.lineWidth=3; ctx.strokeRect(4,4,W-8,H-8);
+  duoLbl.textContent=`Duocromo • fila 20/${denoms[idx]} • logMAR ${logMAR.toFixed(2)}  —  (←/→ para cambiar, ↻ para remezclar)`;
 }
 
 /* ==================== Modo / Oscuro ==================== */
 function switchMode(){
   const m=modeSel.value;
-  snellenControls.style.display = (m==='snellen')?'flex':'none';
+  const showSnellenControls = (m==='snellen'||m==='duo');
+  snellenControls.style.display = showSnellenControls?'flex':'none';
+
+  // Mostrar/ocultar selector de vista y leyenda de secuencia
+  const showView = (m==='snellen');
+  viewModeWrap.classList.toggle('hide', !showView);
+  seqInfo.classList.toggle('hide', !showView);
+
   stageSnellen.classList.toggle('active', m==='snellen');
   stageAmsler.classList.toggle('active', m==='amsler');
-  stageAstig .classList.toggle('active', m==='astig');
-  stageIshi  .classList.toggle('active', m==='ishihara');
+  stageDuo.classList.toggle('active', m==='duo');
+
   if(m==='snellen') render(false);
   if(m==='amsler') drawAmsler();
-  if(m==='astig')  drawAstig();
-  if(m==='ishihara') drawIshi();
+  if(m==='duo') renderDuo(false);
 }
 modeSel.addEventListener('change',switchMode);
+
 darkToggle.addEventListener('click',()=>{ document.body.classList.toggle('dark'); switchMode(); });
 
-/* ==================== Controles Snellen ==================== */
-distanceM.addEventListener('input',()=>render(false));
-distanceM.addEventListener('change',()=>render(false));
-alphabetSel.addEventListener('change',()=>render(true));
-prevRow.addEventListener('click',()=>{currentRow=clamp(currentRow-1,0,SNELLEN_SEQ.length-1);render(false);});
-nextRow.addEventListener('click',()=>{currentRow=clamp(currentRow+1,0,SNELLEN_SEQ.length-1);render(false);});
-shuffleBtn.addEventListener('click',()=>render(true));
+/* ==================== Controles Snellen / Duocromo ==================== */
+distanceM.addEventListener('input',()=>{ if(modeSel.value==='duo') renderDuo(false); else render(false); });
+distanceM.addEventListener('change',()=>{ if(modeSel.value==='duo') renderDuo(false); else render(false); });
+alphabetSel.addEventListener('change',()=>{ if(modeSel.value==='duo') renderDuo(true); else render(true); });
+prevRow.addEventListener('click',()=>{currentRow=clamp(currentRow-1,0,SNELLEN_SEQ.length-1); if(modeSel.value==='duo') renderDuo(false); else render(false);});
+nextRow.addEventListener('click',()=>{currentRow=clamp(currentRow+1,0,SNELLEN_SEQ.length-1); if(modeSel.value==='duo') renderDuo(false); else render(false);});
+shuffleBtn.addEventListener('click',()=>{ if(modeSel.value==='duo') renderDuo(true); else render(true); });
 
 /* --- Teclado / Presenter: mapeos --- */
 const CYCLE_ALPHABETS=["sloan","tumbleE","landolt","digits","kids"];
@@ -352,13 +388,14 @@ function cycleAlphabet(){
   const idx = CYCLE_ALPHABETS.indexOf(alphabetSel.value);
   const next = (idx===-1?0:(idx+1)%CYCLE_ALPHABETS.length);
   alphabetSel.value = CYCLE_ALPHABETS[next];
-  render(true);
+  if(modeSel.value==='duo') renderDuo(true); else render(true);
 }
+
 document.addEventListener('keydown',e=>{
   // Evitar interferir si se está escribiendo
   const tag=(document.activeElement&&document.activeElement.tagName)||'';
   if(/INPUT|TEXTAREA|SELECT/.test(tag)) return;
-  if(modeSel.value!=='snellen') return;
+  if(!(modeSel.value==='snellen' || modeSel.value==='duo')) return;
 
   // F5 -> cambiar alfabeto (y evitar recarga de la página)
   if(e.key==='F5'){
@@ -368,23 +405,19 @@ document.addEventListener('keydown',e=>{
   }
 
   // Remezclar (B o .)
-  if(e.key==='b' || e.key==='B' || e.key==='.') { render(true); e.preventDefault(); return; }
+  if(e.key==='b' || e.key==='B' || e.key==='.') { if(modeSel.value==='duo') renderDuo(true); else render(true); e.preventDefault(); return; }
 
-  if(viewMode.value==='one'){
-    // Avanzar (→, PageDown, Space)
-    if(e.key==='ArrowRight' || e.key==='PageDown' || e.key===' '){
-      currentRow = clamp(currentRow+1, 0, SNELLEN_SEQ.length-1);
-      render(false); e.preventDefault(); return;
-    }
-    // Retroceder (←, PageUp, Backspace)
-    if(e.key==='ArrowLeft' || e.key==='PageUp' || e.key==='Backspace'){
-      currentRow = clamp(currentRow-1, 0, SNELLEN_SEQ.length-1);
-      render(false); e.preventDefault(); return;
-    }
-    // ↑/↓ opcionales
-    if(e.key==='ArrowUp'){ currentRow = clamp(currentRow-1, 0, SNELLEN_SEQ.length-1); render(false); e.preventDefault(); return; }
-    if(e.key==='ArrowDown'){ currentRow = clamp(currentRow+1, 0, SNELLEN_SEQ.length-1); render(false); e.preventDefault(); return; }
+  // Avanzar/retroceder de fila
+  if(e.key==='ArrowRight' || e.key==='PageDown' || e.key===' '){
+    currentRow = clamp(currentRow+1, 0, SNELLEN_SEQ.length-1);
+    if(modeSel.value==='duo') renderDuo(false); else render(false); e.preventDefault(); return;
   }
+  if(e.key==='ArrowLeft' || e.key==='PageUp' || e.key==='Backspace'){
+    currentRow = clamp(currentRow-1, 0, SNELLEN_SEQ.length-1);
+    if(modeSel.value==='duo') renderDuo(false); else render(false); e.preventDefault(); return;
+  }
+  if(e.key==='ArrowUp'){ currentRow = clamp(currentRow-1, 0, SNELLEN_SEQ.length-1); if(modeSel.value==='duo') renderDuo(false); else render(false); e.preventDefault(); return; }
+  if(e.key==='ArrowDown'){ currentRow = clamp(currentRow+1, 0, SNELLEN_SEQ.length-1); if(modeSel.value==='duo') renderDuo(false); else render(false); e.preventDefault(); return; }
 });
 
 /* ==================== PDF ==================== */
@@ -431,8 +464,7 @@ function init(){
   switchMode();
   render(true);
   drawAmsler();
-  drawAstig();
-  drawIshi();
+  renderDuo(true);
 }
 init();
 </script>
