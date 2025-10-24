@@ -268,8 +268,46 @@ function generateLetters(counts,mode,logsKey){
 }
 let currentRow=0; const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 function render(regenerate){
-  const ppm=store.pxPerMM; chart.innerHTML='';
-  if(!ppm){ const p=document.createElement('p'); p.textContent='👉 Calibra la barra a 50 mm y pulsa "Guardar".'; chart.appendChild(p); return;}
+  const ppmStored = store.pxPerMM; chart.innerHTML='';
+  const hasCal = !!ppmStored; const ppm = hasCal ? ppmStored : 4; // Fallback 4 px/mm
+  if(!hasCal){ const p=document.createElement('p'); p.className='small'; p.textContent='⚠️ Usando escala provisoria (4 px/mm). Calibra la barra a 50 mm y pulsa "Guardar" para tamaño exacto.'; chart.appendChild(p); }
+
+  const Dm=parseFloat(distanceM.value||'3')||3.0, nRows=SNELLEN_SEQ.length;
+  const denoms=snellenDenoms(nRows), logs=denoms.map(logmarFromDen);
+  const counts=countsFor(nRows), mode=alphabetSel.value;
+  const logsKey=logs.map(x=>x.toFixed(4)).join(',');
+  if(regenerate||cacheKey!==counts.join(',')+'|'+logsKey||cacheMode!==mode){generateLetters(counts,mode,logsKey);}  
+  if(viewMode.value==='one'){currentRow=clamp(currentRow,0,counts.length-1); rowInfo.textContent=`Fila ${currentRow+1} / ${counts.length}`;} else rowInfo.textContent='';
+
+  counts.forEach((cnt,idx)=>{
+    if(viewMode.value==='one'&&idx!==currentRow) return;
+    const logMAR=logs[idx], Hmm=letterHeightMM(Dm,logMAR), Hpx=Hmm*ppm;
+
+    const denom = denoms[idx];
+    const baseGap = Math.round(Hpx);
+    const gapPx = Math.round(baseGap * (denom <= 50 ? 1.3 : 1));
+
+    const rowWrap=document.createElement('div'); rowWrap.className='rowWrap';
+    const row=document.createElement('div'); row.className='row'; row.style.gap=gapPx+'px';
+
+    for(let i=0;i<cnt;i++){
+      const cell=document.createElement('div'); cell.className='cell';
+      if(mode==='sloan'||mode==='digits'||mode==='kids'){
+        cell.textContent=lettersCache[idx][i]; cell.style.fontSize=`${Hpx}px`;
+      }else if(mode==='tumbleE'){
+        const e=document.createElement('span'); e.className='tumble'; e.textContent='E';
+        e.style.fontSize=`${Hpx}px`; e.style.transform=`rotate(${rotCache[idx][i]}deg)`; cell.appendChild(e);
+      }else{ // Landolt C
+        const c=document.createElement('span'); c.className='tumble'; c.textContent='C';
+        c.style.fontSize=`${Hpx}px`; c.style.transform=`rotate(${gapCache[idx][i]}deg)`; cell.appendChild(c);
+      }
+      row.appendChild(cell);
+    }
+    const lbl=document.createElement('div'); lbl.className='label';
+    lbl.textContent=`20/${denoms[idx]} • logMAR ${logMAR.toFixed(2)}`;
+    rowWrap.appendChild(row); rowWrap.appendChild(lbl); chart.appendChild(rowWrap);
+  });
+}
   const Dm=parseFloat(distanceM.value||'3')||3.0, nRows=SNELLEN_SEQ.length;
   const denoms=snellenDenoms(nRows), logs=denoms.map(logmarFromDen);
   const counts=countsFor(nRows), mode=alphabetSel.value;
@@ -326,9 +364,39 @@ function drawAmsler(){
 
 /* ==================== Duocromo (rojo/verde) ==================== */
 function renderDuo(regenerate){
-  const ppm=store.pxPerMM; const panel=$('#duoPanel'); const duoRow=$('#duoRow'); const duoLbl=$('#duoLbl');
+  const ppmStored = store.pxPerMM; const ppm = ppmStored || 4; // Fallback para ver letras aunque no esté calibrado
+  const panel=$('#duoPanel'); const duoRow=$('#duoRow'); const duoLbl=$('#duoLbl');
   duoRow.innerHTML=''; duoLbl.textContent='';
-  if(!ppm){ duoLbl.textContent='👉 Calibra la barra a 50 mm y pulsa "Guardar".'; return; }
+  if(!ppmStored){ duoLbl.textContent='⚠️ Escala provisoria (4 px/mm). Calibra a 50 mm para tamaño exacto.'; }
+
+  const Dm=parseFloat(distanceM.value||'3')||3.0;
+  const denoms=snellenDenoms(SNELLEN_SEQ.length); const idx=clamp(currentRow,0,denoms.length-1);
+  const logMAR=logmarFromDen(denoms[idx]); const Hpx=letterHeightMM(Dm,logMAR)*ppm;
+
+  const mode=alphabetSel.value;
+  const localLetters = Array.from({length:5},()=>{
+    if(mode==='sloan') return rand(SLOAN);
+    if(mode==='digits')return rand(DIGITS);
+    if(mode==='kids')  return rand(KIDS);
+    return mode==='tumbleE'?'E':'C';
+  });
+
+  const baseGap=Math.round(Hpx), gapPx=Math.round(baseGap*1.15);
+  duoRow.style.gap=gapPx+'px';
+
+  for(let i=0;i<5;i++){
+    const cell=document.createElement('div'); cell.className='duoCell';
+    if(mode==='tumbleE'){
+      const e=document.createElement('span'); e.className='tumble'; e.textContent='E'; e.style.fontSize=`${Hpx}px`; e.style.transform=`rotate(${randE()}deg)`; cell.appendChild(e);
+    }else if(mode==='landolt'){
+      const c=document.createElement('span'); c.className='tumble'; c.textContent='C'; c.style.fontSize=`${Hpx}px`; c.style.transform=`rotate(${randGap()}deg)`; cell.appendChild(c);
+    }else{
+      cell.textContent=localLetters[i]; cell.style.fontSize=`${Hpx}px`;
+    }
+    duoRow.appendChild(cell);
+  }
+  duoLbl.textContent=`Duocromo • 20/${denoms[idx]} • logMAR ${logMAR.toFixed(2)}  —  (←/→ cambia tamaño, ↻ remezcla)`;
+}
 
   const Dm=parseFloat(distanceM.value||'3')||3.0;
   const denoms=snellenDenoms(SNELLEN_SEQ.length); const idx=clamp(currentRow,0,denoms.length-1);
