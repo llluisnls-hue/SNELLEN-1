@@ -91,28 +91,13 @@
     <span class="small">Secuencia: 20/400,200,100,70,50,40,30,25,20 • Patrón: 1,2,3,4,5 y luego 6</span>
   </div>
 
-  <!-- Controles Duocromático -->
-  <div class="grp" id="duoControls">
-    <label>Distancia (m):
-      <input id="duoDistanceM" type="number" min="0.5" max="10" step="0.1" value="3.0">
-    </label>
-    <label>Tamaño (20/x):
-      <select id="duoDenom">
-        <option>400</option><option>200</option><option>100</option><option>70</option>
-        <option selected>50</option><option>40</option><option>30</option><option>25</option><option>20</option>
+  $1
+    <label>Estilo:
+      <select id="duoLayout">
+        <option value="grid" selected>Cuadrícula 4×4</option>
+        <option value="columns">Dos columnas</option>
       </select>
     </label>
-    <label>Signos:
-      <select id="duoAlphabet">
-        <option value="sloan" selected>Sloan</option>
-        <option value="tumbleE">E</option>
-        <option value="landolt">Landolt C</option>
-        <option value="digits">Números</option>
-      </select>
-    </label>
-    <button id="duoSwap" class="btn" title="Invertir verde/rojo">⇄ Invertir</button>
-    <label><input type="checkbox" id="duoMidline" checked> Línea media</label>
-    <button id="duoShuffle" class="btn" title="Remezclar">↻</button>
   </div>
 
   <div class="grp">
@@ -385,14 +370,15 @@ function duoLetterFont(px){ return `${px}px Arial, Helvetica, sans-serif`; }
 function drawDuo(){
   const ppm=store.pxPerMM; const c=duoCanvas; if(!c) return;
   const ctx=c.getContext('2d'); const W=c.width=1200,H=c.height=800; ctx.clearRect(0,0,W,H);
-  // Fondo mitad rojo / verde
-  const red = '#b70000'; // rojo profundo
-  const green = '#008b00'; // verde profundo
+  // Fondos
+  const red = '#d10000';
+  const green = '#00b000';
   const leftColor = duoInvert?green:red;
   const rightColor = duoInvert?red:green;
   ctx.fillStyle=leftColor; ctx.fillRect(0,0,W/2,H);
   ctx.fillStyle=rightColor; ctx.fillRect(W/2,0,W/2,H);
 
+  // Mensaje de calibración
   if(!ppm){
     ctx.fillStyle=getComputedStyle(document.body).getPropertyValue('--fg');
     ctx.font='20px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
@@ -402,45 +388,104 @@ function drawDuo(){
   }
 
   const Dm=parseFloat((duoDistanceM.value||'3')); const denom=parseInt(duoDenom.value,10);
-  const logMAR=logmarFromDen(denom); const Hmm=letterHeightMM(Dm,logMAR); const Hpx=Hmm*ppm;
-  const gap = Math.round(Hpx*1.0);
-  // letras a ambos lados, misma secuencia
-  const mode=duoAlphabet.value; const count=5;
-  if(mode!=='tumbleE' && mode!=='landolt') duoLetters = duoPickSet(mode,count);
-  // Posiciones
-  const colXLeft = W*0.25; const colXRight=W*0.75; let y=H*0.35;
-  ctx.fillStyle='#fff'; // letras blancas para contraste estable
-  ctx.textAlign='center'; ctx.textBaseline='alphabetic'; ctx.font=duoLetterFont(Hpx);
+  const logMAR=logmarFromDen(denom); const Hmm=letterHeightMM(Dm,logMAR); const Hpx=Math.max(12, Hmm*ppm);
+  const mode=duoAlphabet.value;
 
-  for(let i=0;i<count;i++){
-    const ch = duoLetters[i] || 'E';
-    if(mode==='tumbleE'){
-      // 4 orientaciones
-      const orientations=[0,90,180,270];
-      const ang=orientations[i%4]*DEG; // determinista
-      ctx.save();
-      ctx.translate(colXLeft,y); ctx.rotate(ang); ctx.fillText('E',0,0); ctx.restore();
-      ctx.save();
-      ctx.translate(colXRight,y); ctx.rotate(ang); ctx.fillText('E',0,0); ctx.restore();
-    }else if(mode==='landolt'){
-      // Rotar C para simular gap
-      const gaps=[0,90,180,270]; const ang=gaps[i%4]*DEG;
-      ctx.save(); ctx.translate(colXLeft,y); ctx.rotate(ang); ctx.fillText('C',0,0); ctx.restore();
-      ctx.save(); ctx.translate(colXRight,y); ctx.rotate(ang); ctx.fillText('C',0,0); ctx.restore();
-    }else{
-      ctx.fillText(ch,colXLeft,y);
-      ctx.fillText(ch,colXRight,y);
+  // Estilo de letras negro (como la referencia)
+  ctx.fillStyle='#000';
+  ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.font=duoLetterFont(Hpx);
+
+  const layout = (document.getElementById('duoLayout')?.value)||'grid';
+
+  if(layout==='columns'){
+    // Dos columnas simétricas (como versión anterior)
+    const count=5; if(mode!=='tumbleE' && mode!=='landolt') duoLetters = duoPickSet(mode,count);
+    const colXLeft = W*0.25; const colXRight=W*0.75; let y=H*0.30;
+    const gap = Math.round(Hpx*1.1);
+    for(let i=0;i<count;i++){
+      const ch = duoLetters[i] || 'E';
+      if(mode==='tumbleE'){
+        const orientations=[0,90,180,270]; const ang=orientations[i%4]*DEG;
+        ctx.save(); ctx.translate(colXLeft,y); ctx.rotate(ang); ctx.fillText('E',0,0); ctx.restore();
+        ctx.save(); ctx.translate(colXRight,y); ctx.rotate(ang); ctx.fillText('E',0,0); ctx.restore();
+      }else if(mode==='landolt'){
+        const gaps=[0,90,180,270]; const ang=gaps[i%4]*DEG;
+        ctx.save(); ctx.translate(colXLeft,y); ctx.rotate(ang); ctx.fillText('C',0,0); ctx.restore();
+        ctx.save(); ctx.translate(colXRight,y); ctx.rotate(ang); ctx.fillText('C',0,0); ctx.restore();
+      }else{
+        ctx.fillText(ch,colXLeft,y);
+        ctx.fillText(ch,colXRight,y);
+      }
+      y += Hpx + gap;
     }
-    y += Hpx + gap;
+  } else {
+    // Cuadrícula 4x4 atravesando ambos campos, al estilo de la imagen de referencia
+    const rows=4, cols=4; // total 16
+    // Generar set determinista por fila
+    const set = duoPickSet(mode, cols); // base fila
+    const gridLetters = Array.from({length:rows}, (_,r)=>{
+      if(r===0) return ['M','U','O','H'];
+      if(r===1) return ['H','U','M','O'];
+      if(r===2) return ['R','U','O','M'];
+      if(r===3) return ['H','R','M','U'];
+      r
+  if(!ppm){
+    ctx.fillStyle=getComputedStyle(document.body).getPropertyValue('--fg');
+    ctx.font='20px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('👉 Calibra la barra y pulsa Guardar', W/2, H/2);
+    return;
   }
 
-  if(duoMidline.checked){ ctx.strokeStyle='#000'; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(W/2,0); ctx.lineTo(W/2,H); ctx.stroke(); }
+  const Dm=parseFloat((duoDistanceM.value||'3')); const denom=parseInt(duoDenom.value,10);
+  const logMAR=logmarFromDen(denom); const Hmm=letterHeightMM(Dm,logMAR); const Hpx=Hmm*ppm;
 
-  // Etiquetas
+  const count = 4; // como el ejemplo (4 filas)
+  // Preparar letras
+  const mode=duoAlphabet.value;
+  if(mode!=='tumbleE' && mode!=='landolt') duoLetters = duoPickSet(mode,count);
+
+  // Color de letras como en el ejemplo: negro
+  ctx.fillStyle = '#000';
+  ctx.textAlign='center'; ctx.textBaseline='alphabetic'; ctx.font=duoLetterFont(Hpx);
+
+  if(duoStyle==='rows'){
+    // Filas simétricas (centro de cada mitad)
+    const xL=W*0.25, xR=W*0.75; let y=H*0.28; const gap=Hpx*1.2;
+    for(let i=0;i<count;i++){
+      const ch = (mode==='tumbleE'||mode==='landolt')? (mode==='tumbleE'?'E':'C') : (duoLetters[i]||'E');
+      if(mode==='tumbleE' || mode==='landolt'){
+        const angles=[0,90,180,270]; const ang=angles[i%4]*DEG;
+        ctx.save(); ctx.translate(xL,y); ctx.rotate(ang); ctx.fillText(ch,0,0); ctx.restore();
+        ctx.save(); ctx.translate(xR,y); ctx.rotate(ang); ctx.fillText(ch,0,0); ctx.restore();
+      }else{
+        ctx.fillText(ch,xL,y);
+        ctx.fillText(ch,xR,y);
+      }
+      y+=gap;
+    }
+  } else {
+    // Columna vertical (estilo ejemplo): letras apiladas en cada mitad
+    const xL=W*0.25, xR=W*0.75; let y=H*0.25; const gap=Hpx*1.1;
+    const seq = (mode==='tumbleE'||mode==='landolt') ? ['E','E','E','E'] : duoLetters.slice(0,count);
+    // Izquierda: secuencia directa; Derecha: invertida (parecido al mockup)
+    for(let i=0;i<count;i++){
+      const leftCh=seq[i]||'E'; const rightCh=seq[count-1-i]||'E';
+      if(mode==='tumbleE' || mode==='landolt'){
+        const angles=[0,90,180,270];
+        const angL=angles[i%4]*DEG, angR=angles[(count-1-i)%4]*DEG;
+        ctx.save(); ctx.translate(xL,y); ctx.rotate(angL); ctx.fillText(mode==='tumbleE'?'E':'C',0,0); ctx.restore();
+        ctx.save(); ctx.translate(xR,y); ctx.rotate(angR); ctx.fillText(mode==='tumbleE'?'E':'C',0,0); ctx.restore();
+      }else{
+        ctx.fillText(leftCh,xL,y);
+        ctx.fillText(rightCh,xR,y);
+      }
+      y+=gap;
+    }
+  }
+
+  // Etiquetas discretas
   ctx.fillStyle='#000'; ctx.font='16px system-ui'; ctx.textAlign='left'; ctx.fillText(`20/${denom} • logMAR ${logMAR.toFixed(2)}`, 10, 24);
-  ctx.textAlign='right'; ctx.fillText(duoInvert? 'Verde ◀︎   ▶︎ Rojo' : 'Rojo ◀︎   ▶︎ Verde', W-10, 24);
-}
-
+  ctx.textAlign='right'; ctx.fillText(duoInvert? 'Verde ◀︎   ▶︎ Rojo' : 'Rojo ◀︎   ▶︎ Verde', W-10,
 /* ==================== Modo / Oscuro ==================== */
 function switchMode(){
   const m=modeSel.value;
